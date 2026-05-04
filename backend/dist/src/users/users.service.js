@@ -26,6 +26,25 @@ let UsersService = class UsersService {
     async create(data) {
         return this.prisma.user.create({ data });
     }
+    async setVerificationCode(email, code, expiry) {
+        return this.prisma.user.update({
+            where: { email },
+            data: {
+                emailVerificationCode: code,
+                emailVerificationExpiry: expiry,
+            },
+        });
+    }
+    async verifyEmail(email) {
+        return this.prisma.user.update({
+            where: { email },
+            data: {
+                isEmailVerified: true,
+                emailVerificationCode: null,
+                emailVerificationExpiry: null,
+            },
+        });
+    }
 };
 exports.UsersService = UsersService;
 exports.UsersService = UsersService = __decorate([

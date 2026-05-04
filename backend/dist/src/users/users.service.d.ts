@@ -8,6 +8,9 @@ export declare class UsersService {
         password: string;
         name: string;
         role: import("@prisma/client").$Enums.Role;
+        isEmailVerified: boolean;
+        emailVerificationCode: string | null;
+        emailVerificationExpiry: Date | null;
         createdAt: Date;
     } | null>;
     findById(id: string): Promise<{
@@ -16,6 +19,9 @@ export declare class UsersService {
         password: string;
         name: string;
         role: import("@prisma/client").$Enums.Role;
+        isEmailVerified: boolean;
+        emailVerificationCode: string | null;
+        emailVerificationExpiry: Date | null;
         createdAt: Date;
     } | null>;
     create(data: {
@@ -28,6 +34,31 @@ export declare class UsersService {
         password: string;
         name: string;
         role: import("@prisma/client").$Enums.Role;
+        isEmailVerified: boolean;
+        emailVerificationCode: string | null;
+        emailVerificationExpiry: Date | null;
+        createdAt: Date;
+    }>;
+    setVerificationCode(email: string, code: string, expiry: Date): Promise<{
+        id: string;
+        email: string;
+        password: string;
+        name: string;
+        role: import("@prisma/client").$Enums.Role;
+        isEmailVerified: boolean;
+        emailVerificationCode: string | null;
+        emailVerificationExpiry: Date | null;
+        createdAt: Date;
+    }>;
+    verifyEmail(email: string): Promise<{
+        id: string;
+        email: string;
+        password: string;
+        name: string;
+        role: import("@prisma/client").$Enums.Role;
+        isEmailVerified: boolean;
+        emailVerificationCode: string | null;
+        emailVerificationExpiry: Date | null;
         createdAt: Date;
     }>;
 }

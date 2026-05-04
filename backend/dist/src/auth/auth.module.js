@@ -9,10 +9,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthModule = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
+const config_1 = require("@nestjs/config");
 const auth_service_1 = require("./auth.service");
 const auth_controller_1 = require("./auth.controller");
 const jwt_strategy_1 = require("./strategies/jwt.strategy");
 const users_module_1 = require("../users/users.module");
+const mail_module_1 = require("../mail/mail.module");
+const email_validator_service_1 = require("./services/email-validator.service");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
@@ -20,12 +23,17 @@ exports.AuthModule = AuthModule = __decorate([
     (0, common_1.Module)({
         imports: [
             users_module_1.UsersModule,
-            jwt_1.JwtModule.register({
-                secret: process.env.JWT_SECRET,
-                signOptions: { expiresIn: '7d' },
+            mail_module_1.MailModule,
+            jwt_1.JwtModule.registerAsync({
+                imports: [config_1.ConfigModule],
+                inject: [config_1.ConfigService],
+                useFactory: (config) => ({
+                    secret: config.getOrThrow('JWT_SECRET'),
+                    signOptions: { expiresIn: '7d' },
+                }),
             }),
         ],
-        providers: [auth_service_1.AuthService, jwt_strategy_1.JwtStrategy],
+        providers: [auth_service_1.AuthService, jwt_strategy_1.JwtStrategy, email_validator_service_1.EmailValidatorService],
         controllers: [auth_controller_1.AuthController],
         exports: [jwt_1.JwtModule],
     })

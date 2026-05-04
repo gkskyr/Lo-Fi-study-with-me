@@ -2,40 +2,151 @@
 
 ---
 
-## [FAh-001] Prisma 7 — `directUrl` ve constructor URL override hataları
+## [FAh-001] Prisma 7 — `directUrl`, constructor override ve Driver Adapter zorunluluğu
 
 **Tarih:** 2026-05-04
 
 **Hata Tanımı ve Kodu:**
-- `ts(2353)` — `prisma.config.ts`'te `datasource` objesi içinde `directUrl` property'si Prisma 7 tiplerinde tanımlı değil.
-- `ts(2353)` — `PrismaService` constructor'ında önce `datasources`, ardından `datasourceUrl` property'leri Prisma 7 `PrismaClientOptions` tipinde tanımlı değil.
-- ESLint/Prettier — otomatik üretilen `prisma.config.ts` double-quote kullanıyordu, proje `.prettierrc` `singleQuote: true` gerektiriyor.
+- `ts(2353)` — `prisma.config.ts`'te `datasource.directUrl` Prisma 7 tiplerinde tanımlı değil.
+- `ts(2353)` — `PrismaService` constructor'ında `datasources` ve `datasourceUrl` property'leri Prisma 7 `PrismaClientOptions` tipinde tanımlı değil.
+- `PrismaClientInitializationError` — `PrismaClient needs to be constructed with a non-empty, valid PrismaClientOptions` — `super()` argümansız çalışmıyor.
+- ESLint/Prettier — üretilen `prisma.config.ts` double-quote kullanıyordu, `.prettierrc` `singleQuote: true` gerektiriyor.
 
 **Etki Alanı (Impact):**
-- `prisma.service.ts` — Runtime'da doğru DB URL'ini kullanamıyordu; tüm modüller bu servise bağımlı olduğundan uygulama ayağa kalkamıyordu.
-- `prisma.config.ts` — Migration komutu pgbouncer URL'i üzerinden çalışıyordu; Supabase pooler transaction mode'u migration sırasında hata üretir.
+`PrismaService` tüm modüllerin bağımlılığı olduğundan uygulama hiç ayağa kalkamıyordu.
+
+**Root Cause:**
+Prisma 7 breaking change: `PrismaClient` artık `super()` ile argümansız ya da `datasourceUrl` ile başlatılamıyor. `PrismaClientOptions` tipi şunu zorunlu kılıyor:
+```
+Since Prisma 7, a PrismaClient needs either an adapter or an accelerateUrl.
+```
+Yani ya bir Driver Adapter (`@prisma/adapter-pg`) ya da Prisma Accelerate URL verilmeli.
 
 **Sorunlu Kod:**
 ```typescript
-// prisma.config.ts
-datasource: {
-  url: process.env["DATABASE_URL"],
-  directUrl: process.env["DIRECT_URL"], // ❌ ts(2353) — Prisma 7'de yok
-}
-
-// prisma.service.ts
-super({ datasources: { db: { url: process.env.DATABASE_URL } } }); // ❌ ts(2353)
+super(); // ❌ PrismaClientInitializationError
 super({ datasourceUrl: process.env.DATABASE_URL }); // ❌ ts(2353)
+super({ datasources: { db: { url: '...' } } });     // ❌ ts(2353)
 ```
 
 **Çözüm ve Sonuç:**
-Prisma 7, `PrismaClient` constructor URL override'ını kaldırdı. Client doğrudan `DATABASE_URL` env var'ını okur. `prisma.config.ts` datasource yalnızca Prisma CLI (migrate, introspect) içindir.
+`@prisma/adapter-pg` + `pg` kurulumu, `PrismaService`'e adapter inject edilmesi.
 
-Supabase için doğru Prisma 7 kurulumu:
-- `DATABASE_URL` → pgbouncer pooler (port 6543, `?pgbouncer=true`) — uygulama runtime
-- `DIRECT_URL` → direct connection (port 5432) — migration CLI
-- `prisma.config.ts` → `url: process.env['DIRECT_URL']` — CLI bu URL'i kullanır
-- `PrismaService` → `super()` argümansız — `DATABASE_URL`'i env'den otomatik okur
+```typescript
+// npm install @prisma/adapter-pg pg
+
+import { PrismaPg } from '@prisma/adapter-pg';
+
+constructor() {
+  const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL, // pgbouncer pooler URL
+  });
+  super({ adapter }); // ✅
+}
+```
+
+Supabase .env şeması:
+- `DATABASE_URL` → port 6543 + `?pgbouncer=true` — runtime (adapter kullanır)
+- `DIRECT_URL` → port 5432 — yalnızca `prisma migrate dev` CLI için (`prisma.config.ts`)
+
+`npm run build` → 0 hata. ✅
+
+---
+
+## [FAh-002] `POST /auth/register` → 500 Internal Server Error + CORS / Failed to fetch
+
+**Tarih:** 2026-05-04
+
+**Hata Tanımı:**
+- Frontend'de ilk istek → `Failed to fetch` (bağlantı kurulamadı)
+- CORS düzeltmesi sonrası → `{ status: 500, statusCode: 500, message: "Internal server error" }`
+
+**Etki Alanı (Impact):**
+Auth modülü tamamen çalışmaz durumda — kayıt ve giriş yapılamıyor.
+
+**Root Cause — 2 ayrı sorun:**
+
+**1) Failed to fetch → CORS kapalıydı**
+`main.ts`'te `app.enableCors()` çağrısı yoktu. HTML dosyası `file://` veya farklı origin'den açıldığında tarayıcı CORS policy hatası veriyor, bu `Failed to fetch` olarak görünür.
+
+Sorunlu kod:
+```typescript
+// main.ts — CORS yok
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  app.useGlobalPipes(...);
+  await app.listen(3000);
+}
+```
+
+Çözüm:
+```typescript
+app.enableCors(); // ✅ — ValidationPipe'tan önce
+```
+
+**2) 500 Internal Server Error → Migration çalıştırılmamış**
+`prisma migrate dev --name init` komutu hiç çalıştırılmamıştı. `User` tablosu Supabase'de mevcut değil. Prisma insert yapmaya çalışırken `relation "User" does not exist` hatası fırlatıyor, NestJS bunu yakalar ve 500 döner.
+
+Çözüm:
+```bash
+npx prisma migrate dev --name init
+```
+
+**Not:** Migration `DIRECT_URL` (port 5432) üzerinden çalışır — `prisma.config.ts`'te bu şekilde ayarlı. pgbouncer (port 6543) üzerinden migration çalıştırılmaz.
+
+**Sonuç:** CORS eklendi ✅ — Migration çalıştırıldı ✅
+
+---
+
+## [FAh-003] `POST /auth/register` → 500 — `secretOrPrivateKey must have a value`
+
+**Tarih:** 2026-05-04
+
+**Hata Tanımı ve Kodu:**
+```
+Error: secretOrPrivateKey must have a value
+  at JwtService.sign (jwt.service.js:41)
+  at AuthService.signToken (auth.service.ts:41)
+```
+
+**Etki Alanı (Impact):**
+Kullanıcı DB'ye yazılıyor ama JWT üretilemediğinden kayıt ve giriş 500 döner. Token gerektiren tüm endpoint'ler kullanılamaz.
+
+**Root Cause:**
+`JwtModule.register({ secret: process.env.JWT_SECRET })` modül yüklenme anında (senkron olarak) çalışır. Bu noktada `ConfigModule` henüz `.env` dosyasını okumamıştır — `process.env.JWT_SECRET` değeri `undefined`'dır. Aynı sorun `JwtStrategy` constructor'ında da mevcuttu.
+
+**Sorunlu Kod:**
+```typescript
+// auth.module.ts
+JwtModule.register({
+  secret: process.env.JWT_SECRET, // ❌ undefined — ConfigModule henüz yüklenmedi
+})
+
+// jwt.strategy.ts
+secretOrKey: process.env.JWT_SECRET as string, // ❌ undefined
+```
+
+**Çözüm:**
+`JwtModule.registerAsync()` ile `ConfigService` inject edilerek secret, DI resolution sırasında (ConfigModule yüklendikten sonra) okunur.
+
+```typescript
+// auth.module.ts ✅
+JwtModule.registerAsync({
+  imports: [ConfigModule],
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    secret: config.getOrThrow<string>('JWT_SECRET'),
+    signOptions: { expiresIn: '7d' },
+  }),
+})
+
+// jwt.strategy.ts ✅
+constructor(usersService: UsersService, config: ConfigService) {
+  super({ secretOrKey: config.getOrThrow<string>('JWT_SECRET') });
+}
+```
+
+`getOrThrow` kullanmak önemli: değer yoksa uygulama başlarken hemen hata verir, sessizce `undefined` geçmez.
 
 `npm run build` → 0 hata. ✅
 
