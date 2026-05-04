@@ -1,0 +1,599 @@
+# koZan — Native Mobil Mimari (Android + iOS)
+
+> MVP Kapsamı: Kişisel Oda + Topluluk Odaları (YKS/KPSS) + Q&A + Kamera
+
+---
+
+## 1. Neden İki Ayrı Native Kod?
+
+### React Native / Flutter Değil mi?
+
+| Kriter | Flutter/RN | Native (Kotlin + Swift) |
+|---|---|---|
+| Kamera & Medya | Wrapper sınırlı, bug'lı | OS API'lerine doğrudan erişim |
+| Agora SDK | Resmi destek var ama kısıtlı | Tam özellik desteği |
+| Performans | %80-90 native | %100 native |
+| App Store onayı | Sorun yaşanabilir | Sorunsuz |
+| İş dünyası standardı | Startup hızı için iyi | Uzun vadeli endüstri standardı |
+
+**Karar:** Kamera işini profesyonelce yapacaksak ve Agora gibi bir SDK kullanacaksak native en sağlam yol.
+
+---
+
+## 2. Android — Kotlin + Jetpack Compose
+
+### 2.1 Proje Yapısı (Clean Architecture)
+
+```
+kozan-android/
+├── app/src/main/java/com/kozan/
+│   ├── core/
+│   │   ├── network/          # Retrofit, OkHttp
+│   │   ├── di/               # Hilt modülleri
+│   │   └── util/             # Extensions, helpers
+│   ├── data/
+│   │   ├── remote/           # API servisleri
+│   │   ├── local/            # Room DB
+│   │   └── repository/       # Repository implementasyonları
+│   ├── domain/
+│   │   ├── model/            # Saf Kotlin data class'ları
+│   │   ├── repository/       # Repository interface'leri
+│   │   └── usecase/          # İş mantığı
+│   └── presentation/
+│       ├── auth/             # Login, Register ekranları
+│       ├── personalroom/     # Kişisel oda
+│       ├── communityroom/    # YKS/KPSS odaları
+│       └── qa/               # Soru-Cevap
+```
+
+### 2.2 Kullanılan Kütüphaneler
+
+```kotlin
+// build.gradle.kts
+dependencies {
+    // UI
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.navigation:navigation-compose:2.7.7")
+
+    // Dependency Injection
+    implementation("com.google.dagger:hilt-android:2.51")
+    kapt("com.google.dagger:hilt-compiler:2.51")
+
+    // Network
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // Realtime
+    implementation("io.socket:socket.io-client:2.1.0")
+
+    // Agora Video SDK
+    implementation("io.agora.rtc:full-sdk:4.3.1")
+
+    // Image Loading
+    implementation("io.coil-kt:coil-compose:2.6.0")
+}
+```
+
+### 2.3 Mimari Pattern: MVVM + Clean Architecture
+
+```
+UI (Compose Screen)
+    ↓ user event
+ViewModel (State holder)
+    ↓ calls
+UseCase (İş mantığı)
+    ↓ calls
+Repository Interface (domain katmanı)
+    ↓ implements
+RepositoryImpl (data katmanı)
+    ↓ calls
+Remote DataSource (Retrofit API)
+```
+
+**Neden bu pattern?**
+- ViewModel → Compose arasında tek yönlü veri akışı (UI hiç doğrudan API çağırmaz)
+- UseCase → tek bir iş kuralını encapsulate eder, test edilmesi kolay
+- Repository → Remote/Local kaynak değişse bile UI etkilenmez
+
+### 2.4 ViewModel Örneği (Kişisel Oda)
+
+```kotlin
+@HiltViewModel
+class PersonalRoomViewModel @Inject constructor(
+    private val getRoomUseCase: GetPersonalRoomUseCase,
+    private val agoraManager: AgoraManager
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(PersonalRoomUiState())
+    val uiState: StateFlow<PersonalRoomUiState> = _uiState.asStateFlow()
+
+    fun onEvent(event: PersonalRoomEvent) {
+        when (event) {
+            is PersonalRoomEvent.ToggleCamera -> toggleCamera()
+            is PersonalRoomEvent.LoadRoom -> loadRoom()
+        }
+    }
+
+    private fun toggleCamera() {
+        viewModelScope.launch {
+            if (_uiState.value.isCameraOn) {
+                agoraManager.leaveChannel()
+            } else {
+                val token = getRoomUseCase.getAgoraToken()
+                agoraManager.joinChannel(token)
+            }
+            _uiState.update { it.copy(isCameraOn = !it.isCameraOn) }
+        }
+    }
+}
+
+data class PersonalRoomUiState(
+    val isLoading: Boolean = false,
+    val isCameraOn: Boolean = false,
+    val error: String? = null
+)
+
+sealed class PersonalRoomEvent {
+    object LoadRoom : PersonalRoomEvent()
+    object ToggleCamera : PersonalRoomEvent()
+}
+```
+
+### 2.5 Compose Screen
+
+```kotlin
+@Composable
+fun PersonalRoomScreen(
+    viewModel: PersonalRoomViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (uiState.isCameraOn) {
+            AgoraLocalVideoView(modifier = Modifier.weight(1f))
+        }
+        Button(
+            onClick = { viewModel.onEvent(PersonalRoomEvent.ToggleCamera) },
+            modifier = Modifier.fillMaxWidth().padding(16.dp)
+        ) {
+            Text(if (uiState.isCameraOn) "Kamerayı Kapat" else "Kamerayı Aç")
+        }
+    }
+}
+```
+
+---
+
+## 3. iOS — Swift + SwiftUI
+
+### 3.1 Proje Yapısı
+
+```
+kozan-ios/
+├── KozanApp.swift
+├── Core/
+│   ├── Network/APIClient.swift
+│   └── Extensions/
+├── Data/
+│   ├── Remote/RoomService.swift
+│   └── Repository/RoomRepositoryImpl.swift
+├── Domain/
+│   ├── Models/Room.swift
+│   ├── Repositories/RoomRepository.swift   # Protocol
+│   └── UseCases/GetPersonalRoomUseCase.swift
+└── Presentation/
+    ├── Auth/AuthView.swift
+    ├── PersonalRoom/
+    │   ├── PersonalRoomView.swift
+    │   └── PersonalRoomViewModel.swift
+    └── CommunityRoom/
+        ├── CommunityRoomView.swift
+        └── CommunityRoomViewModel.swift
+```
+
+### 3.2 Package Manager: Swift Package Manager (SPM)
+
+Xcode → File → Add Package Dependencies:
+- `https://github.com/socketio/socket.io-client-swift`
+- `https://github.com/AgoraIO/AgoraRtcEngine_iOS`
+
+### 3.3 ViewModel (ObservableObject)
+
+```swift
+@MainActor
+final class PersonalRoomViewModel: ObservableObject {
+    @Published var isCameraOn: Bool = false
+    @Published var isLoading: Bool = false
+    @Published var errorMessage: String?
+
+    private let getRoomUseCase: GetPersonalRoomUseCase
+    private let agoraManager: AgoraManager
+
+    init(getRoomUseCase: GetPersonalRoomUseCase, agoraManager: AgoraManager) {
+        self.getRoomUseCase = getRoomUseCase
+        self.agoraManager = agoraManager
+    }
+
+    func toggleCamera() async {
+        if isCameraOn {
+            await agoraManager.leaveChannel()
+        } else {
+            do {
+                let token = try await getRoomUseCase.getAgoraToken()
+                await agoraManager.joinChannel(token: token)
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
+        }
+        isCameraOn.toggle()
+    }
+}
+```
+
+### 3.4 SwiftUI View
+
+```swift
+struct PersonalRoomView: View {
+    @StateObject private var viewModel = PersonalRoomViewModel(
+        getRoomUseCase: AppDependencies.shared.getRoomUseCase,
+        agoraManager: AppDependencies.shared.agoraManager
+    )
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if viewModel.isCameraOn {
+                AgoraLocalVideoView(agoraManager: viewModel.agoraManager)
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                    .cornerRadius(16)
+            }
+
+            Button(action: {
+                Task { await viewModel.toggleCamera() }
+            }) {
+                Label(
+                    viewModel.isCameraOn ? "Kamerayı Kapat" : "Kamerayı Aç",
+                    systemImage: viewModel.isCameraOn ? "video.slash" : "video"
+                )
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(viewModel.isCameraOn ? Color.red : Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(12)
+            }
+        }
+        .padding()
+    }
+}
+```
+
+---
+
+## 4. Kamera — Profesyonel Yaklaşım (Agora RTC)
+
+### 4.1 Neden Agora?
+
+Agora, SFU (Selective Forwarding Unit) mimarisi kullanan profesyonel medya sunucusudur.
+
+```
+SFU Mimarisi (Agora):
+Kullanıcı A → [Agora Sunucusu] → Kullanıcı B, C, D
+                                 (herkese Agora dağıtır)
+
+Ham WebRTC P2P:
+Kullanıcı A ←→ Kullanıcı B
+      ↕              ↕
+Kullanıcı C ←→ Kullanıcı D  ← 4 kişide 6 bağlantı, 10 kişide 45!
+```
+
+SFU'da her kullanıcı sadece 1 bağlantı açar → Ölçeklenebilir.
+
+### 4.2 Token Akışı (Güvenlik)
+
+```
+1. Kullanıcı "Kamerayı Aç"a basar
+2. App → GET /rooms/{id}/agora-token  (Backend'e istek)
+3. NestJS → Agora App Certificate ile token üretir
+4. Token → App'e döner (1 saat geçerli)
+5. App → Agora SDK'ya token ile join olur
+6. Kamera akışı başlar
+```
+
+> App Certificate'ı mobil uygulamaya gömmek GÜVENSİZDİR.
+> Biri APK/IPA'yı decompile edip sınırsız oda açabilir.
+> Token her zaman backend'den üretilmelidir.
+
+### 4.3 Android — Agora AgoraManager
+
+```kotlin
+// AgoraManager.kt
+@Singleton
+class AgoraManager @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
+    private var rtcEngine: RtcEngine? = null
+
+    fun initialize(appId: String) {
+        val config = RtcEngineConfig().apply {
+            mContext = context
+            mAppId = appId
+            mEventHandler = object : IRtcEngineEventHandler() {
+                override fun onUserJoined(uid: Int, elapsed: Int) {
+                    // Başka kullanıcı odaya girdi — UI güncelle
+                }
+                override fun onUserOffline(uid: Int, reason: Int) {
+                    // Kullanıcı ayrıldı — UI güncelle
+                }
+            }
+        }
+        rtcEngine = RtcEngine.create(config)
+        rtcEngine?.enableVideo()
+    }
+
+    fun joinChannel(token: String, channelId: String) {
+        val options = ChannelMediaOptions().apply {
+            publishCameraTrack = true
+            publishMicrophoneTrack = false   // MVP: sadece görüntü
+            clientRoleType = CLIENT_ROLE_BROADCASTER
+        }
+        rtcEngine?.joinChannel(token, channelId, 0, options)
+    }
+
+    fun setupLocalVideo(surfaceView: SurfaceView) {
+        rtcEngine?.setupLocalVideo(VideoCanvas(surfaceView, RENDER_MODE_HIDDEN, 0))
+        rtcEngine?.startPreview()
+    }
+
+    fun leaveChannel() {
+        rtcEngine?.leaveChannel()
+    }
+}
+
+// Compose'da kullanım
+@Composable
+fun AgoraLocalVideoView(agoraManager: AgoraManager) {
+    AndroidView(
+        factory = { ctx ->
+            SurfaceView(ctx).also { view ->
+                agoraManager.setupLocalVideo(view)
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
+}
+```
+
+### 4.4 iOS — Agora AgoraManager
+
+```swift
+// AgoraManager.swift
+import AgoraRtcKit
+
+@MainActor
+final class AgoraManager: NSObject, ObservableObject {
+    private var agoraKit: AgoraRtcEngineKit?
+    @Published var remoteUserIds: [UInt] = []
+
+    func initialize(appId: String) {
+        let config = AgoraRtcEngineConfig()
+        config.appId = appId
+        agoraKit = AgoraRtcEngineKit.sharedEngine(with: config, delegate: self)
+        agoraKit?.enableVideo()
+    }
+
+    func joinChannel(token: String, channelId: String) async {
+        let options = AgoraRtcChannelMediaOptions()
+        options.publishCameraTrack = true
+        options.publishMicrophoneTrack = false
+        options.clientRoleType = .broadcaster
+        agoraKit?.joinChannel(byToken: token, channelId: channelId, uid: 0, mediaOptions: options)
+    }
+
+    func setupLocalVideo(view: UIView) {
+        let canvas = AgoraRtcVideoCanvas()
+        canvas.view = view
+        canvas.renderMode = .hidden
+        canvas.uid = 0
+        agoraKit?.setupLocalVideo(canvas)
+        agoraKit?.startPreview()
+    }
+
+    func leaveChannel() {
+        agoraKit?.leaveChannel()
+    }
+}
+
+extension AgoraManager: AgoraRtcEngineDelegate {
+    func rtcEngine(_ engine: AgoraRtcEngineKit, didJoinedOfUid uid: UInt, elapsed: Int) {
+        remoteUserIds.append(uid)
+    }
+    func rtcEngine(_ engine: AgoraRtcEngineKit, didOfflineOfUid uid: UInt, reason: AgoraUserOfflineReason) {
+        remoteUserIds.removeAll { $0 == uid }
+    }
+}
+
+// UIViewRepresentable — SwiftUI içine UIKit view
+struct AgoraLocalVideoView: UIViewRepresentable {
+    let agoraManager: AgoraManager
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        agoraManager.setupLocalVideo(view: view)
+        return view
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+```
+
+### 4.5 İzin Yönetimi
+
+**Android — AndroidManifest.xml:**
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+```kotlin
+// Compose runtime izin
+val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
+
+if (cameraPermission.status.isGranted) {
+    AgoraLocalVideoView(agoraManager)
+} else {
+    Button(onClick = { cameraPermission.launchPermissionRequest() }) {
+        Text("Kamera İznini Ver")
+    }
+}
+```
+
+**iOS — Info.plist:**
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Çalışma odanızda kameranızı kullanmak için erişim gereklidir.</string>
+```
+
+```swift
+// Swift izin kontrolü
+import AVFoundation
+
+func requestCameraPermission() async -> Bool {
+    switch AVCaptureDevice.authorizationStatus(for: .video) {
+    case .authorized: return true
+    case .notDetermined:
+        return await AVCaptureDevice.requestAccess(for: .video)
+    default: return false
+    }
+}
+```
+
+---
+
+## 5. Backend — NestJS ile Mobil Uyum
+
+### 5.1 Agora Token Endpoint
+
+```typescript
+// rooms.controller.ts
+@Get(':id/agora-token')
+@UseGuards(JwtAuthGuard)
+async getAgoraToken(@Param('id') roomId: string, @CurrentUser() user: User) {
+    return this.roomsService.generateAgoraToken(roomId, user.id);
+}
+
+// rooms.service.ts
+async generateAgoraToken(roomId: string, userId: string) {
+    const uid = parseInt(userId.replace(/-/g, '').slice(0, 8), 16); // deterministik UID
+    const expireTime = Math.floor(Date.now() / 1000) + 3600; // 1 saat
+    const token = RtcTokenBuilder.buildTokenWithUid(
+        process.env.AGORA_APP_ID,
+        process.env.AGORA_APP_CERTIFICATE,
+        roomId,
+        uid,
+        RtcRole.PUBLISHER,
+        expireTime
+    );
+    return { token, uid };
+}
+```
+
+### 5.2 Q&A Endpoint'leri
+
+```typescript
+@Post('questions')
+@UseGuards(JwtAuthGuard)
+async createQuestion(@Body() dto: CreateQuestionDto, @CurrentUser() user: User) {
+    const question = await this.qaService.createQuestion(dto, user.id);
+    // Socket.io ile odadakilere bildir
+    this.roomsGateway.emit(dto.roomId, 'question:new', question);
+    return question;
+}
+
+@Post('questions/:id/vote')
+@UseGuards(JwtAuthGuard)
+async vote(@Param('id') questionId: string, @Body() dto: VoteDto, @CurrentUser() user: User) {
+    const result = await this.qaService.vote(questionId, user.id, dto.direction);
+    this.roomsGateway.emit(result.roomId, 'vote:updated', { questionId, count: result.count });
+    return result;
+}
+```
+
+### 5.3 Socket.io Events (Mobil)
+
+```
+Android Socket.io client: io.socket:socket.io-client:2.1.0
+iOS Socket.io client: socket.io-client-swift
+
+Ortak event isimleri:
+  question:new     → Yeni soru geldi
+  vote:updated     → Oy güncellendi
+  camera:on        → Kullanıcı kamera açtı
+  camera:off       → Kullanıcı kamera kapattı
+  presence:update  → Odadaki kullanıcılar değişti
+```
+
+---
+
+## 6. MVP Geliştirme Takvimi
+
+```
+Hafta 1-2: Backend (NestJS)
+  [ ] Auth (JWT + Refresh Token)
+  [ ] Personal Room API
+  [ ] Community Room API (YKS, KPSS)
+  [ ] Q&A API (soru, cevap, oy)
+  [ ] Agora Token servisi
+  [ ] Socket.io gateway
+
+Hafta 3-4: Android (Kotlin + Compose)
+  [ ] Proje kurulumu + Hilt DI
+  [ ] Network katmanı (Retrofit + OkHttp)
+  [ ] Auth ekranı
+  [ ] Personal Room + Agora kamera
+  [ ] Community Room listesi
+  [ ] Q&A ekranı + realtime oy
+
+Hafta 5-6: iOS (Swift + SwiftUI)
+  [ ] Proje kurulumu + SPM
+  [ ] Network katmanı (URLSession)
+  [ ] Auth ekranı
+  [ ] Personal Room + Agora kamera
+  [ ] Community Room listesi
+  [ ] Q&A ekranı + realtime oy
+```
+
+---
+
+## 7. Ücretsiz Servisler Özeti
+
+| Servis | Ne İçin | Ücretsiz Limit |
+|---|---|---|
+| **Agora RTC** | Kamera/video | 10.000 dk/ay |
+| **Railway** | NestJS host | $5 kredi/ay |
+| **Supabase** | PostgreSQL | 500MB + 2 proje |
+| **Upstash Redis** | Cache/Presence | 10.000 req/gün |
+| **GitHub Actions** | CI/CD | 2000 dk/ay |
+
+---
+
+## 8. Android ↔ iOS Kod Paylaşım Stratejisi
+
+```
+Backend API (TEK KOD — paylaşılan)
+    ├── Android: Retrofit ile çağırır
+    └── iOS: URLSession ile çağırır
+
+Agora (AYRI SDK, aynı mantık)
+    ├── Android: io.agora.rtc:full-sdk
+    └── iOS: AgoraRtcEngine_iOS (SPM)
+
+Socket.io (AYRI LİBRARY, aynı event isimleri)
+    ├── Android: io.socket:socket.io-client
+    └── iOS: socket.io-client-swift
+
+API Sözleşmesi → JSON şemaları ortak
+    Swagger (/api/docs) her iki platforma rehberlik eder
+```
+
+**Önemli:** Backend değiştiğinde her iki platform güncellenir.
+Swagger dökümanı "tek kaynak of truth" olarak kullanılır.

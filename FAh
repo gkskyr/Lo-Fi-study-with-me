@@ -1,0 +1,42 @@
+# koZan — Fault Analysis History (FAh)
+
+---
+
+## [FAh-001] Prisma 7 — `directUrl` ve constructor URL override hataları
+
+**Tarih:** 2026-05-04
+
+**Hata Tanımı ve Kodu:**
+- `ts(2353)` — `prisma.config.ts`'te `datasource` objesi içinde `directUrl` property'si Prisma 7 tiplerinde tanımlı değil.
+- `ts(2353)` — `PrismaService` constructor'ında önce `datasources`, ardından `datasourceUrl` property'leri Prisma 7 `PrismaClientOptions` tipinde tanımlı değil.
+- ESLint/Prettier — otomatik üretilen `prisma.config.ts` double-quote kullanıyordu, proje `.prettierrc` `singleQuote: true` gerektiriyor.
+
+**Etki Alanı (Impact):**
+- `prisma.service.ts` — Runtime'da doğru DB URL'ini kullanamıyordu; tüm modüller bu servise bağımlı olduğundan uygulama ayağa kalkamıyordu.
+- `prisma.config.ts` — Migration komutu pgbouncer URL'i üzerinden çalışıyordu; Supabase pooler transaction mode'u migration sırasında hata üretir.
+
+**Sorunlu Kod:**
+```typescript
+// prisma.config.ts
+datasource: {
+  url: process.env["DATABASE_URL"],
+  directUrl: process.env["DIRECT_URL"], // ❌ ts(2353) — Prisma 7'de yok
+}
+
+// prisma.service.ts
+super({ datasources: { db: { url: process.env.DATABASE_URL } } }); // ❌ ts(2353)
+super({ datasourceUrl: process.env.DATABASE_URL }); // ❌ ts(2353)
+```
+
+**Çözüm ve Sonuç:**
+Prisma 7, `PrismaClient` constructor URL override'ını kaldırdı. Client doğrudan `DATABASE_URL` env var'ını okur. `prisma.config.ts` datasource yalnızca Prisma CLI (migrate, introspect) içindir.
+
+Supabase için doğru Prisma 7 kurulumu:
+- `DATABASE_URL` → pgbouncer pooler (port 6543, `?pgbouncer=true`) — uygulama runtime
+- `DIRECT_URL` → direct connection (port 5432) — migration CLI
+- `prisma.config.ts` → `url: process.env['DIRECT_URL']` — CLI bu URL'i kullanır
+- `PrismaService` → `super()` argümansız — `DATABASE_URL`'i env'den otomatik okur
+
+`npm run build` → 0 hata. ✅
+
+---
