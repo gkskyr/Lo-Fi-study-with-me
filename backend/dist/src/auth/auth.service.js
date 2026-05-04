@@ -47,14 +47,21 @@ const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
 const bcrypt = __importStar(require("bcrypt"));
 const users_service_1 = require("../users/users.service");
+const mail_service_1 = require("../mail/mail.service");
+const email_validator_service_1 = require("./services/email-validator.service");
 let AuthService = class AuthService {
     usersService;
     jwtService;
-    constructor(usersService, jwtService) {
+    mailService;
+    emailValidator;
+    constructor(usersService, jwtService, mailService, emailValidator) {
         this.usersService = usersService;
         this.jwtService = jwtService;
+        this.mailService = mailService;
+        this.emailValidator = emailValidator;
     }
     async register(dto) {
+        await this.emailValidator.validate(dto.email);
         const existing = await this.usersService.findByEmail(dto.email);
         if (existing)
             throw new common_1.ConflictException('Bu e-posta zaten kayıtlı.');
@@ -64,6 +71,26 @@ let AuthService = class AuthService {
             name: dto.name,
             password: hashed,
         });
+        const code = this.generateOtp();
+        const expiry = new Date(Date.now() + 10 * 60 * 1000);
+        await this.usersService.setVerificationCode(user.email, code, expiry);
+        await this.mailService.sendVerificationCode(user.email, user.name, code);
+        return { message: 'Kayıt başarılı. E-posta adresinize doğrulama kodu gönderildi.' };
+    }
+    async verifyEmail(dto) {
+        const user = await this.usersService.findByEmail(dto.email);
+        if (!user)
+            throw new common_1.BadRequestException('Geçersiz istek.');
+        if (user.isEmailVerified) {
+            return { message: 'E-posta zaten doğrulanmış.' };
+        }
+        if (!user.emailVerificationCode ||
+            !user.emailVerificationExpiry ||
+            user.emailVerificationCode !== dto.code ||
+            user.emailVerificationExpiry < new Date()) {
+            throw new common_1.BadRequestException('Doğrulama kodu geçersiz veya süresi dolmuş.');
+        }
+        await this.usersService.verifyEmail(user.email);
         return this.signToken(user.id, user.email);
     }
     async login(dto) {
@@ -73,7 +100,13 @@ let AuthService = class AuthService {
         const isMatch = await bcrypt.compare(dto.password, user.password);
         if (!isMatch)
             throw new common_1.UnauthorizedException('Geçersiz kimlik bilgileri.');
+        if (!user.isEmailVerified) {
+            throw new common_1.ForbiddenException('Lütfen önce e-posta adresinizi doğrulayın.');
+        }
         return this.signToken(user.id, user.email);
+    }
+    generateOtp() {
+        return Math.floor(100000 + Math.random() * 900000).toString();
     }
     signToken(userId, email) {
         const payload = { sub: userId, email };
@@ -84,6 +117,8 @@ exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [users_service_1.UsersService,
-        jwt_1.JwtService])
+        jwt_1.JwtService,
+        mail_service_1.MailService,
+        email_validator_service_1.EmailValidatorService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

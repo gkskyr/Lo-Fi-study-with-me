@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { Strategy } from 'passport-jwt';
 import { UsersService } from '../../users/users.service';
 declare const JwtStrategy_base: new (...args: [opt: import("passport-jwt").StrategyOptionsWithRequest] | [opt: import("passport-jwt").StrategyOptionsWithoutRequest]) => Strategy & {
@@ -5,7 +6,7 @@ declare const JwtStrategy_base: new (...args: [opt: import("passport-jwt").Strat
 };
 export declare class JwtStrategy extends JwtStrategy_base {
     private readonly usersService;
-    constructor(usersService: UsersService);
+    constructor(usersService: UsersService, config: ConfigService);
     validate(payload: {
         sub: string;
         email: string;
@@ -15,6 +16,9 @@ export declare class JwtStrategy extends JwtStrategy_base {
         password: string;
         name: string;
         role: import("@prisma/client").$Enums.Role;
+        isEmailVerified: boolean;
+        emailVerificationCode: string | null;
+        emailVerificationExpiry: Date | null;
         createdAt: Date;
     }>;
 }

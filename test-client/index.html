@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <title>koZan — Test Client</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; padding: 24px; }
+    h1 { color: #7c6af7; margin-bottom: 24px; font-size: 20px; }
+    h2 { color: #aaa; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 900px; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; }
+    input {
+      width: 100%; padding: 8px 10px; margin-bottom: 8px;
+      background: #111; border: 1px solid #333; color: #e0e0e0;
+      border-radius: 4px; font-family: monospace; font-size: 13px;
+    }
+    input:focus { outline: none; border-color: #7c6af7; }
+    button {
+      width: 100%; padding: 9px; background: #7c6af7; color: #fff;
+      border: none; border-radius: 4px; cursor: pointer;
+      font-family: monospace; font-size: 13px; font-weight: bold;
+    }
+    button:hover { background: #6a58e0; }
+    button:disabled { background: #333; color: #666; cursor: default; }
+    .response {
+      margin-top: 12px; padding: 10px; background: #111;
+      border: 1px solid #2a2a2a; border-radius: 4px;
+      font-size: 12px; min-height: 60px; white-space: pre-wrap; word-break: break-all;
+    }
+    .ok { border-color: #2d6a3f; color: #4ade80; }
+    .err { border-color: #6a2d2d; color: #f87171; }
+    .token-bar {
+      max-width: 900px; margin-bottom: 16px;
+      background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .token-bar span { color: #aaa; font-size: 12px; white-space: nowrap; }
+    .token-val {
+      flex: 1; font-size: 11px; color: #7c6af7;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .clear-btn { width: auto; padding: 4px 12px; font-size: 11px; background: #333; }
+    .clear-btn:hover { background: #444; }
+    .base-row { max-width: 900px; margin-bottom: 16px; display: flex; gap: 8px; align-items: center; }
+    .base-row span { color: #aaa; font-size: 12px; white-space: nowrap; }
+    .base-row input { margin: 0; }
+  </style>
+</head>
+<body>
+
+<h1>koZan — API Test Client</h1>
+
+<div class="base-row">
+  <span>Base URL:</span>
+  <input id="baseUrl" value="http://localhost:3000" style="max-width:260px" />
+</div>
+
+<div class="token-bar">
+  <span>Token:</span>
+  <div class="token-val" id="tokenDisplay">—</div>
+  <button class="clear-btn" onclick="clearToken()">Temizle</button>
+</div>
+
+<div class="grid">
+
+  <!-- REGISTER -->
+  <div class="card">
+    <h2>POST /auth/register</h2>
+    <input id="reg-name" placeholder="name" value="Test Kullanıcı" />
+    <input id="reg-email" placeholder="email" value="test@kozan.com" />
+    <input id="reg-password" placeholder="password (Min8, 1Büyük, 1Rakam, 1Özel)" value="Test1234!" type="password" />
+    <button onclick="register()">Kayıt Ol</button>
+    <div class="response" id="reg-res">—</div>
+  </div>
+
+  <!-- VERIFY EMAIL -->
+  <div class="card">
+    <h2>POST /auth/verify-email</h2>
+    <p style="font-size:12px;color:#555;margin-bottom:8px">OTP kodu backend terminalinde görünür (SMTP yoksa)</p>
+    <input id="ver-email" placeholder="email" value="test@kozan.com" />
+    <input id="ver-code" placeholder="6 haneli kod" maxlength="6" />
+    <button onclick="verifyEmail()">Doğrula → Token Al</button>
+    <div class="response" id="ver-res">—</div>
+  </div>
+
+  <!-- LOGIN -->
+  <div class="card">
+    <h2>POST /auth/login</h2>
+    <input id="log-email" placeholder="email" value="test@kozan.com" />
+    <input id="log-password" placeholder="password" value="Test1234!" type="password" />
+    <button onclick="login()">Giriş Yap</button>
+    <div class="response" id="log-res">—</div>
+  </div>
+
+  <!-- PROTECTED TEST -->
+  <div class="card">
+    <h2>GET /auth/me — Korumalı Endpoint Testi</h2>
+    <p style="font-size:12px;color:#666;margin-bottom:10px">Token otomatik eklenir. Önce giriş yap.</p>
+    <button onclick="getMe()">Beni Getir</button>
+    <div class="response" id="me-res">—</div>
+  </div>
+
+  <!-- RAW REQUEST -->
+  <div class="card">
+    <h2>Manuel İstek</h2>
+    <input id="raw-method" placeholder="Method (GET, POST...)" value="GET" />
+    <input id="raw-path" placeholder="Path (/auth/...)" value="/auth/me" />
+    <textarea id="raw-body" placeholder='Body (JSON) — GET için boş bırak'
+      style="width:100%;height:60px;background:#111;border:1px solid #333;color:#e0e0e0;
+             border-radius:4px;font-family:monospace;font-size:12px;padding:8px;
+             margin-bottom:8px;resize:vertical"></textarea>
+    <button onclick="rawRequest()">Gönder</button>
+    <div class="response" id="raw-res">—</div>
+  </div>
+
+</div>
+
+<script>
+  let token = null;
+
+  function base() {
+    return document.getElementById('baseUrl').value.replace(/\/$/, '');
+  }
+
+  function setToken(t) {
+    token = t;
+    document.getElementById('tokenDisplay').textContent = t || '—';
+  }
+
+  function clearToken() {
+    setToken(null);
+  }
+
+  function show(id, data, isErr) {
+    const el = document.getElementById(id);
+    el.textContent = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
+    el.className = 'response ' + (isErr ? 'err' : 'ok');
+  }
+
+  async function apiFetch(path, options = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch(base() + path, { headers, ...options });
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); } catch { json = text; }
+    return { ok: res.ok, status: res.status, data: json };
+  }
+
+  async function verifyEmail() {
+    try {
+      const r = await apiFetch('/auth/verify-email', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: document.getElementById('ver-email').value,
+          code: document.getElementById('ver-code').value,
+        }),
+      });
+      show('ver-res', { status: r.status, ...r.data }, !r.ok);
+      if (r.ok && r.data.access_token) setToken(r.data.access_token);
+    } catch (e) {
+      show('ver-res', 'Bağlantı hatası: ' + e.message, true);
+    }
+  }
+
+  async function register() {
+    try {
+      const r = await apiFetch('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: document.getElementById('reg-name').value,
+          email: document.getElementById('reg-email').value,
+          password: document.getElementById('reg-password').value,
+        }),
+      });
+      show('reg-res', { status: r.status, ...r.data }, !r.ok);
+      if (r.ok && r.data.access_token) setToken(r.data.access_token);
+    } catch (e) {
+      show('reg-res', 'Bağlantı hatası: ' + e.message, true);
+    }
+  }
+
+  async function login() {
+    try {
+      const r = await apiFetch('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: document.getElementById('log-email').value,
+          password: document.getElementById('log-password').value,
+        }),
+      });
+      show('log-res', { status: r.status, ...r.data }, !r.ok);
+      if (r.ok && r.data.access_token) setToken(r.data.access_token);
+    } catch (e) {
+      show('log-res', 'Bağlantı hatası: ' + e.message, true);
+    }
+  }
+
+  async function getMe() {
+    try {
+      const r = await apiFetch('/auth/me');
+      show('me-res', { status: r.status, ...r.data }, !r.ok);
+    } catch (e) {
+      show('me-res', 'Bağlantı hatası: ' + e.message, true);
+    }
+  }
+
+  async function rawRequest() {
+    try {
+      const method = document.getElementById('raw-method').value.toUpperCase();
+      const path = document.getElementById('raw-path').value;
+      const bodyStr = document.getElementById('raw-body').value.trim();
+      const options = { method };
+      if (bodyStr) options.body = bodyStr;
+      const r = await apiFetch(path, options);
+      show('raw-res', { status: r.status, body: r.data }, !r.ok);
+    } catch (e) {
+      show('raw-res', 'Bağlantı hatası: ' + e.message, true);
+    }
+  }
+</script>
+</body>
+</html>

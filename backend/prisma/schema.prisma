@@ -7,12 +7,15 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      Role     @default(BEGINNER)
-  createdAt DateTime @default(now())
+  id                      String    @id @default(uuid())
+  email                   String    @unique
+  password                String
+  name                    String
+  role                    Role      @default(BEGINNER)
+  isEmailVerified         Boolean   @default(false)
+  emailVerificationCode   String?
+  emailVerificationExpiry DateTime?
+  createdAt               DateTime  @default(now())
 
   @@index([email])
 }
