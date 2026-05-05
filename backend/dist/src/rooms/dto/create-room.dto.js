@@ -9,23 +9,21 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.VerifyEmailDto = void 0;
+exports.CreateRoomDto = void 0;
 const class_validator_1 = require("class-validator");
-const class_transformer_1 = require("class-transformer");
-class VerifyEmailDto {
-    email;
-    code;
+const client_1 = require("@prisma/client");
+class CreateRoomDto {
+    title;
+    type;
 }
-exports.VerifyEmailDto = VerifyEmailDto;
+exports.CreateRoomDto = CreateRoomDto;
 __decorate([
-    (0, class_transformer_1.Transform)(({ value }) => value?.trim().toLowerCase()),
-    (0, class_validator_1.IsEmail)({}, { message: 'Geçerli bir e-posta adresi giriniz.' }),
-    __metadata("design:type", String)
-], VerifyEmailDto.prototype, "email", void 0);
-__decorate([
-    (0, class_transformer_1.Transform)(({ value }) => value?.trim()),
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.Length)(6, 6, { message: 'Doğrulama kodu 6 haneli olmalıdır.' }),
+    (0, class_validator_1.MinLength)(3, { message: 'Oda başlığı en az 3 karakter olmalıdır.' }),
     __metadata("design:type", String)
-], VerifyEmailDto.prototype, "code", void 0);
-//# sourceMappingURL=verify-email.dto.js.map
+], CreateRoomDto.prototype, "title", void 0);
+__decorate([
+    (0, class_validator_1.IsEnum)(client_1.RoomType, { message: 'Oda tipi PERSONAL veya COMMUNITY olmalıdır.' }),
+    __metadata("design:type", String)
+], CreateRoomDto.prototype, "type", void 0);
+//# sourceMappingURL=create-room.dto.js.map

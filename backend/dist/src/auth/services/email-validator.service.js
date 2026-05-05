@@ -57,35 +57,43 @@ let EmailValidatorService = EmailValidatorService_1 = class EmailValidatorServic
     async validate(email) {
         const apiKey = this.config.get('ABSTRACT_API_KEY');
         if (apiKey) {
-            await this.validateWithAbstractApi(email, apiKey);
+            await this.validateWithReputationApi(email, apiKey);
         }
         else {
             await this.validateWithFallback(email);
         }
     }
-    async validateWithAbstractApi(email, apiKey) {
-        const url = `https://emailvalidation.abstractapi.com/v1/?api_key=${apiKey}&email=${encodeURIComponent(email)}`;
+    async validateWithReputationApi(email, apiKey) {
+        const url = `https://emailreputation.abstractapi.com/v1/?api_key=${apiKey}&email=${encodeURIComponent(email)}`;
         let data;
         try {
             const res = await fetch(url);
-            data = (await res.json());
+            data = await res.json();
         }
         catch {
-            this.logger.warn('Abstract API erişilemedi, fallback doğrulamaya geçiliyor.');
+            this.logger.warn('Email Reputation API erişilemedi, fallback doğrulamaya geçiliyor.');
             await this.validateWithFallback(email);
             return;
         }
-        if (!data.is_valid_format?.value) {
+        if (data.error) {
+            this.logger.warn(`Email Reputation API hatası (${data.error.code}): ${data.error.message} — fallback'e geçiliyor.`);
+            await this.validateWithFallback(email);
+            return;
+        }
+        if (!data.email_deliverability.is_format_valid) {
             throw new common_1.BadRequestException('Geçersiz e-posta formatı.');
         }
-        if (data.is_disposable_email?.value) {
+        if (data.email_quality.is_disposable) {
             throw new common_1.BadRequestException('Geçici (tek kullanımlık) e-posta adresleri kabul edilmez.');
         }
-        if (!data.is_mx_found?.value) {
+        if (!data.email_deliverability.is_mx_valid) {
             throw new common_1.BadRequestException('Bu e-posta adresi için geçerli bir mail sunucusu bulunamadı.');
         }
-        if (data.deliverability === 'UNDELIVERABLE') {
+        if (data.email_deliverability.status === 'undeliverable') {
             throw new common_1.BadRequestException('Bu e-posta adresine ulaşılamıyor. Lütfen geçerli bir adres girin.');
+        }
+        if (data.email_risk.address_risk_status === 'high') {
+            throw new common_1.BadRequestException('Bu e-posta adresi yüksek riskli olarak işaretlenmiş.');
         }
     }
     async validateWithFallback(email) {

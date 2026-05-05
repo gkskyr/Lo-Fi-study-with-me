@@ -4,6 +4,6 @@ export declare class EmailValidatorService {
     private readonly logger;
     constructor(config: ConfigService);
     validate(email: string): Promise<void>;
-    private validateWithAbstractApi;
+    private validateWithReputationApi;
     private validateWithFallback;
 }

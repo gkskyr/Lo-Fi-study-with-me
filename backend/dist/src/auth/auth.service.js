@@ -61,10 +61,10 @@ let AuthService = class AuthService {
         this.emailValidator = emailValidator;
     }
     async register(dto) {
-        await this.emailValidator.validate(dto.email);
         const existing = await this.usersService.findByEmail(dto.email);
         if (existing)
             throw new common_1.ConflictException('Bu e-posta zaten kayıtlı.');
+        await this.emailValidator.validate(dto.email);
         const hashed = await bcrypt.hash(dto.password, 10);
         const user = await this.usersService.create({
             email: dto.email,

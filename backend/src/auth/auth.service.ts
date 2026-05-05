@@ -24,10 +24,11 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    await this.emailValidator.validate(dto.email);
-
     const existing = await this.usersService.findByEmail(dto.email);
     if (existing) throw new ConflictException('Bu e-posta zaten kayıtlı.');
+
+    // DB'de yoksa API token harca
+    await this.emailValidator.validate(dto.email);
 
     const hashed = await bcrypt.hash(dto.password, 10);
     const user = await this.usersService.create({

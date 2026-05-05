@@ -16,6 +16,7 @@ model User {
   emailVerificationCode   String?
   emailVerificationExpiry DateTime?
   createdAt               DateTime  @default(now())
+  rooms                   Room[]
 
   @@index([email])
 }
@@ -24,4 +25,21 @@ enum Role {
   BEGINNER
   EXPERIENCED
   INSTRUCTOR
+}
+
+model Room {
+  id        String   @id @default(uuid())
+  title     String
+  type      RoomType
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
+  @@index([type])
+}
+
+enum RoomType {
+  PERSONAL
+  COMMUNITY
 }
