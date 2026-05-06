@@ -6,22 +6,20 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RoomsModule = void 0;
+exports.QuestionsModule = void 0;
 const common_1 = require("@nestjs/common");
-const rooms_service_1 = require("./rooms.service");
-const rooms_controller_1 = require("./rooms.controller");
-const rooms_gateway_1 = require("./rooms.gateway");
-const agora_service_1 = require("../agora/agora.service");
+const questions_service_1 = require("./questions.service");
+const questions_controller_1 = require("./questions.controller");
 const auth_module_1 = require("../auth/auth.module");
-let RoomsModule = class RoomsModule {
+const rooms_module_1 = require("../rooms/rooms.module");
+let QuestionsModule = class QuestionsModule {
 };
-exports.RoomsModule = RoomsModule;
-exports.RoomsModule = RoomsModule = __decorate([
+exports.QuestionsModule = QuestionsModule;
+exports.QuestionsModule = QuestionsModule = __decorate([
     (0, common_1.Module)({
-        imports: [auth_module_1.AuthModule],
-        providers: [rooms_service_1.RoomsService, rooms_gateway_1.RoomsGateway, agora_service_1.AgoraService],
-        controllers: [rooms_controller_1.RoomsController],
-        exports: [rooms_service_1.RoomsService, rooms_gateway_1.RoomsGateway],
+        imports: [auth_module_1.AuthModule, rooms_module_1.RoomsModule],
+        providers: [questions_service_1.QuestionsService],
+        controllers: [questions_controller_1.QuestionsController],
     })
-], RoomsModule);
-//# sourceMappingURL=rooms.module.js.map
+], QuestionsModule);
+//# sourceMappingURL=questions.module.js.map

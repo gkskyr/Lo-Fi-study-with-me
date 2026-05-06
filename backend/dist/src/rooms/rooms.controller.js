@@ -15,14 +15,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RoomsController = void 0;
 const common_1 = require("@nestjs/common");
 const rooms_service_1 = require("./rooms.service");
+const agora_service_1 = require("../agora/agora.service");
 const create_room_dto_1 = require("./dto/create-room.dto");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const jwt_optional_auth_guard_1 = require("../auth/guards/jwt-optional-auth.guard");
 const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
 let RoomsController = class RoomsController {
     roomsService;
-    constructor(roomsService) {
+    agoraService;
+    constructor(roomsService, agoraService) {
         this.roomsService = roomsService;
+        this.agoraService = agoraService;
     }
     create(dto, user) {
         return this.roomsService.create(dto, user.id);
@@ -32,6 +35,10 @@ let RoomsController = class RoomsController {
     }
     findOne(id, user) {
         return this.roomsService.findOne(id, user?.id);
+    }
+    async getAgoraToken(id, user) {
+        await this.roomsService.findOne(id, user.id);
+        return this.agoraService.generateRtcToken(id, user.id);
     }
 };
 exports.RoomsController = RoomsController;
@@ -61,8 +68,18 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", void 0)
 ], RoomsController.prototype, "findOne", null);
+__decorate([
+    (0, common_1.Get)(':id/agora-token'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], RoomsController.prototype, "getAgoraToken", null);
 exports.RoomsController = RoomsController = __decorate([
     (0, common_1.Controller)('rooms'),
-    __metadata("design:paramtypes", [rooms_service_1.RoomsService])
+    __metadata("design:paramtypes", [rooms_service_1.RoomsService,
+        agora_service_1.AgoraService])
 ], RoomsController);
 //# sourceMappingURL=rooms.controller.js.map

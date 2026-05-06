@@ -1,9 +1,11 @@
 import { RoomsService } from './rooms.service';
+import { AgoraService } from '../agora/agora.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import type { User } from '@prisma/client';
 export declare class RoomsController {
     private readonly roomsService;
-    constructor(roomsService: RoomsService);
+    private readonly agoraService;
+    constructor(roomsService: RoomsService, agoraService: AgoraService);
     create(dto: CreateRoomDto, user: User): Promise<{
         owner: {
             id: string;
@@ -39,5 +41,10 @@ export declare class RoomsController {
         title: string;
         type: import("@prisma/client").$Enums.RoomType;
         ownerId: string;
+    }>;
+    getAgoraToken(id: string, user: User): Promise<{
+        token: string;
+        uid: number;
+        channelName: string;
     }>;
 }

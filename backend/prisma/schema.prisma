@@ -7,16 +7,17 @@ datasource db {
 }
 
 model User {
-  id                      String    @id @default(uuid())
-  email                   String    @unique
+  id                      String     @id @default(uuid())
+  email                   String     @unique
   password                String
   name                    String
-  role                    Role      @default(BEGINNER)
-  isEmailVerified         Boolean   @default(false)
+  role                    Role       @default(BEGINNER)
+  isEmailVerified         Boolean    @default(false)
   emailVerificationCode   String?
   emailVerificationExpiry DateTime?
-  createdAt               DateTime  @default(now())
+  createdAt               DateTime   @default(now())
   rooms                   Room[]
+  questions               Question[]
 
   @@index([email])
 }
@@ -28,15 +29,30 @@ enum Role {
 }
 
 model Room {
-  id        String   @id @default(uuid())
+  id        String     @id @default(uuid())
   title     String
   type      RoomType
   ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  questions Question[]
 
   @@index([ownerId])
   @@index([type])
+}
+
+model Question {
+  id        String   @id @default(uuid())
+  content   String
+  upvotes   Int      @default(0)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([roomId])
+  @@index([authorId])
 }
 
 enum RoomType {

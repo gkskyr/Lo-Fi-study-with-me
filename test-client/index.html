@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <title>koZan — Test Client</title>
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
+  <script src="https://cdn.socket.io/4.8.3/socket.io.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; padding: 24px; }
@@ -45,6 +47,20 @@
     .base-row { max-width: 900px; margin-bottom: 16px; display: flex; gap: 8px; align-items: center; }
     .base-row span { color: #aaa; font-size: 12px; white-space: nowrap; }
     .base-row input { margin: 0; }
+    .full { grid-column: 1 / -1; }
+    .cam-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .cam-row input { margin: 0; flex: 1; }
+    .cam-row button { width: auto; padding: 8px 18px; }
+    .cam-row button.leave { background: #6a2d2d; }
+    .cam-row button.leave:hover { background: #8a3d3d; }
+    .cam-row button:disabled { background: #333; color: #666; cursor: default; }
+    #videos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .video-box { position: relative; width: 280px; height: 210px; background: #000;
+                 border-radius: 6px; overflow: hidden; border: 1px solid #2a2a2a; flex-shrink: 0; }
+    .video-box video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .video-label { position: absolute; bottom: 6px; left: 8px; font-size: 11px;
+                   color: #fff; background: rgba(0,0,0,.55); padding: 2px 6px; border-radius: 3px; }
+    .cam-status { font-size: 12px; color: #aaa; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -63,6 +79,19 @@
 </div>
 
 <div class="grid">
+
+  <!-- CAMERA TEST -->
+  <div class="card full">
+    <h2>Kamera Testi — Agora RTC (WebRTC)</h2>
+    <div class="cam-row">
+      <input id="cam-room-id" placeholder="Oda ID (listeden kopyala)" />
+      <input id="cam-app-id" placeholder="Agora App ID" value="65b1effe89dc470991629c1a87f2c591" style="max-width:280px" />
+      <button id="cam-join-btn" onclick="joinCamera()">Kameraya Katıl</button>
+      <button id="cam-leave-btn" class="leave" onclick="leaveCamera()" disabled>Ayrıl</button>
+    </div>
+    <div id="videos"></div>
+    <div class="cam-status" id="cam-status">—</div>
+  </div>
 
   <!-- REGISTER -->
   <div class="card">
@@ -119,6 +148,38 @@
     <input id="room-id" placeholder="Oda ID (listeden kopyala)" />
     <button onclick="getRoom()">Getir</button>
     <div class="response" id="room-get-res">—</div>
+  </div>
+
+  <!-- AGORA TOKEN -->
+  <div class="card">
+    <h2>GET /rooms/:id/agora-token — RTC Token Al (JWT zorunlu)</h2>
+    <input id="agora-room-id" placeholder="Oda ID (listeden kopyala)" />
+    <button onclick="getAgoraToken()">Token Al</button>
+    <div class="response" id="agora-res">—</div>
+  </div>
+
+  <!-- Q&A PANEL -->
+  <div class="card full">
+    <h2>Q&amp;A — Soru / Upvote Paneli + Gerçek Zamanlı (Socket.io)</h2>
+    <div class="cam-row" style="align-items:flex-start;flex-wrap:wrap;gap:6px">
+      <input id="qa-room-id" placeholder="Oda ID" style="flex:1;min-width:180px" />
+      <button onclick="qaConnect()" id="qa-connect-btn" style="width:auto;padding:8px 14px;background:#2d4a2d">Socket Bağlan</button>
+      <button onclick="qaDisconnect()" id="qa-disconnect-btn" style="width:auto;padding:8px 14px;background:#4a2d2d" disabled>Bağlantıyı Kes</button>
+      <button onclick="qaLoad()" style="width:auto;padding:8px 14px">Soruları Yükle</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <textarea id="qa-content" placeholder="Soru içeriği (min 10 karakter)..."
+        style="flex:1;height:52px;background:#111;border:1px solid #333;color:#e0e0e0;
+               border-radius:4px;font-family:monospace;font-size:12px;padding:8px;resize:none"></textarea>
+      <button onclick="qaAsk()" style="width:auto;padding:8px 16px;align-self:stretch">Sor</button>
+    </div>
+    <div id="qa-list" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>
+    <div style="margin-top:8px">
+      <div style="font-size:11px;color:#555;margin-bottom:4px">Socket Event Log</div>
+      <div id="qa-log" style="background:#080808;border:1px solid #1a1a1a;border-radius:4px;
+           padding:8px;height:80px;overflow-y:auto;font-size:11px;color:#666;font-family:monospace"></div>
+    </div>
+    <div class="cam-status" id="qa-status">—</div>
   </div>
 
   <!-- PROTECTED TEST -->
@@ -264,6 +325,16 @@
     }
   }
 
+  async function getAgoraToken() {
+    try {
+      const id = document.getElementById('agora-room-id').value.trim();
+      const r = await apiFetch(`/rooms/${id}/agora-token`);
+      show('agora-res', { status: r.status, ...r.data }, !r.ok);
+    } catch (e) {
+      show('agora-res', 'Bağlantı hatası: ' + e.message, true);
+    }
+  }
+
   async function getMe() {
     try {
       const r = await apiFetch('/auth/me');
@@ -272,6 +343,234 @@
       show('me-res', 'Bağlantı hatası: ' + e.message, true);
     }
   }
+
+  // ── Q&A ─────────────────────────────────────────────────────────────────────
+  let qaRefreshTimer = null;
+  let qaSocket = null;
+  let qaQuestions = [];
+
+  function qaStatus(msg) { document.getElementById('qa-status').textContent = msg; }
+
+  function qaLog(msg, color = '#666') {
+    const el = document.getElementById('qa-log');
+    const ts = new Date().toLocaleTimeString('tr-TR');
+    el.innerHTML += `<div style="color:${color}">[${ts}] ${escHtml(msg)}</div>`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function qaConnect() {
+    const roomId = document.getElementById('qa-room-id').value.trim();
+    if (!roomId) { qaStatus('Oda ID gerekli.'); return; }
+    if (qaSocket) { qaSocket.disconnect(); }
+
+    qaSocket = io(base(), { transports: ['websocket'] });
+
+    qaSocket.on('connect', () => {
+      qaLog('Bağlandı: ' + qaSocket.id, '#4ade80');
+      qaSocket.emit('room:join', roomId);
+    });
+
+    qaSocket.on('room:joined', (data) => {
+      qaLog('Odaya katıldın: ' + data.roomId, '#7c6af7');
+      qaStatus('Socket bağlı — oda: ' + data.roomId);
+      document.getElementById('qa-connect-btn').disabled = true;
+      document.getElementById('qa-disconnect-btn').disabled = false;
+      qaLoad();
+    });
+
+    qaSocket.on('question:new', (q) => {
+      qaLog('Yeni soru: ' + q.content.slice(0, 40) + '...', '#facc15');
+      qaQuestions.unshift(q);
+      qaQuestions.sort((a, b) => b.upvotes - a.upvotes || new Date(a.createdAt) - new Date(b.createdAt));
+      qaRenderList(qaQuestions);
+    });
+
+    qaSocket.on('vote:updated', (data) => {
+      qaLog(`Oy güncellendi — id:${data.id.slice(0,8)}… → ${data.upvotes} oy`, '#38bdf8');
+      const q = qaQuestions.find(x => x.id === data.id);
+      if (q) { q.upvotes = data.upvotes; qaQuestions.sort((a,b) => b.upvotes - a.upvotes); qaRenderList(qaQuestions); }
+    });
+
+    qaSocket.on('disconnect', () => {
+      qaLog('Bağlantı kesildi.', '#f87171');
+      qaStatus('Socket bağlantısı kesildi.');
+      document.getElementById('qa-connect-btn').disabled = false;
+      document.getElementById('qa-disconnect-btn').disabled = true;
+    });
+
+    qaSocket.on('connect_error', (e) => {
+      qaLog('Bağlantı hatası: ' + e.message, '#f87171');
+    });
+  }
+
+  function qaDisconnect() {
+    if (qaSocket) { qaSocket.disconnect(); qaSocket = null; }
+  }
+
+  function qaRenderList(questions) {
+    const el = document.getElementById('qa-list');
+    if (!questions.length) { el.innerHTML = '<div style="color:#555;font-size:12px">Henüz soru yok.</div>'; return; }
+    el.innerHTML = questions.map((q, i) => `
+      <div style="background:#111;border:1px solid #2a2a2a;border-radius:5px;padding:10px;display:flex;gap:10px;align-items:flex-start">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:44px">
+          <button onclick="qaVote('${q.id}')"
+            style="width:44px;padding:4px 0;background:#1e3a1e;border:1px solid #2d6a3f;
+                   border-radius:4px;color:#4ade80;font-size:11px;cursor:pointer">▲ Oy</button>
+          <span style="font-size:18px;font-weight:bold;color:${q.upvotes > 0 ? '#4ade80' : '#555'}">${q.upvotes}</span>
+        </div>
+        <div style="flex:1;overflow:hidden">
+          <div style="font-size:13px;color:#e0e0e0;word-break:break-word">${escHtml(q.content)}</div>
+          <div style="font-size:11px;color:#555;margin-top:4px">
+            <span style="color:#7c6af7">${escHtml(q.author?.name ?? '?')}</span>
+            &nbsp;·&nbsp;${new Date(q.createdAt).toLocaleTimeString('tr-TR')}
+            &nbsp;·&nbsp;<span style="color:#444;user-select:all;font-size:10px">${q.id}</span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#444;min-width:20px;text-align:right">#${i+1}</div>
+      </div>`).join('');
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  async function qaLoad() {
+    const roomId = document.getElementById('qa-room-id').value.trim();
+    if (!roomId) { qaStatus('Oda ID gerekli.'); return; }
+    const r = await apiFetch(`/rooms/${roomId}/questions`);
+    if (!r.ok) { qaStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    qaQuestions = r.data;
+    qaRenderList(qaQuestions);
+    qaStatus(`${r.data.length} soru yüklendi — ${new Date().toLocaleTimeString('tr-TR')}`);
+  }
+
+  async function qaAsk() {
+    const roomId  = document.getElementById('qa-room-id').value.trim();
+    const content = document.getElementById('qa-content').value.trim();
+    if (!roomId)  { qaStatus('Oda ID gerekli.'); return; }
+    if (!token)   { qaStatus('Önce giriş yap.'); return; }
+    const r = await apiFetch('/questions', {
+      method: 'POST',
+      body: JSON.stringify({ roomId, content }),
+    });
+    if (!r.ok) { qaStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    document.getElementById('qa-content').value = '';
+    qaStatus('Soru eklendi.');
+    await qaLoad();
+  }
+
+  async function qaVote(questionId) {
+    if (!token) { qaStatus('Oy vermek için giriş yap.'); return; }
+    const r = await apiFetch(`/questions/${questionId}/vote`, { method: 'POST' });
+    if (!r.ok) { qaStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    await qaLoad();
+  }
+
+  function qaAutoRefresh() {
+    const btn = document.getElementById('qa-refresh-btn');
+    if (qaRefreshTimer) {
+      clearInterval(qaRefreshTimer);
+      qaRefreshTimer = null;
+      btn.style.background = '#2d4a2d';
+      btn.textContent = 'Oto-Yenile (5s)';
+      qaStatus('Oto-yenileme durduruldu.');
+    } else {
+      qaRefreshTimer = setInterval(qaLoad, 5000);
+      btn.style.background = '#4a2d2d';
+      btn.textContent = 'Durdur';
+      qaStatus('Oto-yenileme başladı (5s).');
+      qaLoad();
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // ── Agora Kamera Testi ──────────────────────────────────────────────────────
+  let agoraClient = null;
+  let localVideoTrack = null;
+  let localAudioTrack = null;
+  const remoteUsers = {};
+
+  function camStatus(msg) {
+    document.getElementById('cam-status').textContent = msg;
+  }
+
+  function addVideoBox(uid, track, label) {
+    const box = document.createElement('div');
+    box.className = 'video-box';
+    box.id = 'video-' + uid;
+    const lbl = document.createElement('div');
+    lbl.className = 'video-label';
+    lbl.textContent = label;
+    box.appendChild(lbl);
+    document.getElementById('videos').appendChild(box);
+    track.play('video-' + uid);
+  }
+
+  function removeVideoBox(uid) {
+    const el = document.getElementById('video-' + uid);
+    if (el) el.remove();
+  }
+
+  async function joinCamera() {
+    const roomId = document.getElementById('cam-room-id').value.trim();
+    const appId  = document.getElementById('cam-app-id').value.trim();
+    if (!roomId || !appId) { camStatus('Oda ID ve App ID gerekli.'); return; }
+    if (!token)  { camStatus('Önce giriş yap — JWT token gerekli.'); return; }
+
+    camStatus('Token alınıyor...');
+    const r = await apiFetch(`/rooms/${roomId}/agora-token`);
+    if (!r.ok) { camStatus('Token hatası: ' + JSON.stringify(r.data)); return; }
+
+    const { token: rtcToken, uid, channelName } = r.data;
+    camStatus('Kanala bağlanılıyor...');
+
+    agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+
+    agoraClient.on('user-published', async (user, mediaType) => {
+      await agoraClient.subscribe(user, mediaType);
+      if (mediaType === 'video') {
+        remoteUsers[user.uid] = user;
+        addVideoBox(user.uid, user.videoTrack, 'Uzak: ' + user.uid);
+      }
+    });
+
+    agoraClient.on('user-unpublished', (user, mediaType) => {
+      if (mediaType === 'video') {
+        delete remoteUsers[user.uid];
+        removeVideoBox(user.uid);
+      }
+    });
+
+    agoraClient.on('user-left', (user) => {
+      delete remoteUsers[user.uid];
+      removeVideoBox(user.uid);
+    });
+
+    try {
+      await agoraClient.join(appId, channelName, rtcToken, uid);
+      localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+      localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+      await agoraClient.publish([localVideoTrack, localAudioTrack]);
+      addVideoBox('local', localVideoTrack, 'Sen (uid: ' + uid + ')');
+      document.getElementById('cam-join-btn').disabled = true;
+      document.getElementById('cam-leave-btn').disabled = false;
+      camStatus('Yayında — kanal: ' + channelName + ' | uid: ' + uid);
+    } catch (e) {
+      camStatus('Hata: ' + e.message);
+    }
+  }
+
+  async function leaveCamera() {
+    if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); }
+    if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); }
+    if (agoraClient)     await agoraClient.leave();
+    agoraClient = localVideoTrack = localAudioTrack = null;
+    document.getElementById('videos').innerHTML = '';
+    document.getElementById('cam-join-btn').disabled = false;
+    document.getElementById('cam-leave-btn').disabled = true;
+    camStatus('Kanaldan ayrıldın.');
+  }
+  // ────────────────────────────────────────────────────────────────────────────
 
   async function rawRequest() {
     try {
