@@ -29,6 +29,24 @@ export class RoomsService {
     });
   }
 
+  async findOrCreatePersonal(userId: string) {
+    const existing = await this.prisma.room.findFirst({
+      where: { type: RoomType.PERSONAL, ownerId: userId },
+      include: { owner: { select: { id: true, name: true } } },
+    });
+    if (existing) return existing;
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    return this.prisma.room.create({
+      data: {
+        title: `${user?.name ?? 'Kullanıcı'}'ın Odası`,
+        type: RoomType.PERSONAL,
+        ownerId: userId,
+      },
+      include: { owner: { select: { id: true, name: true } } },
+    });
+  }
+
   async findOne(id: string, currentUserId?: string) {
     const room = await this.prisma.room.findUnique({
       where: { id },

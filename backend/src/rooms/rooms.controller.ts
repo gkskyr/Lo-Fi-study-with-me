@@ -1,7 +1,6 @@
-import { Controller, Post, Get, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { RoomsService } from './rooms.service';
 import { AgoraService } from '../agora/agora.service';
-import { CreateRoomDto } from './dto/create-room.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtOptionalAuthGuard } from '../auth/guards/jwt-optional-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -14,16 +13,17 @@ export class RoomsController {
     private readonly agoraService: AgoraService,
   ) {}
 
-  @Post()
-  @UseGuards(JwtAuthGuard)
-  create(@Body() dto: CreateRoomDto, @CurrentUser() user: User) {
-    return this.roomsService.create(dto, user.id);
-  }
-
   @Get()
   @UseGuards(JwtOptionalAuthGuard)
   findAll(@CurrentUser() user: User | null) {
     return this.roomsService.findAll(user?.id);
+  }
+
+  // Statik path (':id'den önce tanımlanmalı)
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  findMine(@CurrentUser() user: User) {
+    return this.roomsService.findOrCreatePersonal(user.id);
   }
 
   @Get(':id')

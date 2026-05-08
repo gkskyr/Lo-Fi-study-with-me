@@ -17,7 +17,7 @@ import { EmailValidatorService } from './services/email-validator.service';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '7d' },
+        signOptions: { expiresIn: config.get<string>('JWT_ACCESS_EXPIRES', '15m') as any },
       }),
     }),
   ],

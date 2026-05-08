@@ -7,6 +7,9 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { QuestionsModule } from './questions/questions.module';
+import { NotesModule } from './notes/notes.module';
+import { XpModule } from './xp/xp.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -17,6 +20,9 @@ import { QuestionsModule } from './questions/questions.module';
     AuthModule,
     RoomsModule,
     QuestionsModule,
+    NotesModule,
+    XpModule,
+    RedisModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
