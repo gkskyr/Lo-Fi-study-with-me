@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+@theme {
+  --color-honey-light: #ffec8c;
+  --color-honey: #ffd000;
+  --color-honey-dark: #ffb700;
+  --color-honey-input: #fef9c3;
+}
