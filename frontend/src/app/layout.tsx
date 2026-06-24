@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Sniglet } from "next/font/google";
 import "./globals.css";
 
-const geist = Geist({ subsets: ["latin"] });
+const sniglet = Sniglet({ subsets: ["latin"], weight: ["400", "800"] });
 
 export const metadata: Metadata = {
   title: "koZan",
@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="tr" className="h-full">
       <body
-        className={`${geist.className} min-h-full`}
+        className={`${sniglet.className} min-h-full`}
         style={{ backgroundColor: "#ffec8c" }}
       >
         {children}

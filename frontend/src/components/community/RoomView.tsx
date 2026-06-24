@@ -5,9 +5,9 @@ import Image from "next/image";
 import type { Participant } from "./useRoomSocket";
 import type { RemoteUser } from "./useAgora";
 
-const AVATAR_COLORS = [
-  "#ffd000", "#fb923c", "#a3e635", "#38bdf8", "#c084fc", "#f472b6",
-];
+const HEX_CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
+
+const AVATAR_COLORS = ["#ffb940", "#ffd34f", "#fb923c", "#fbbf24", "#f59e0b", "#fdba74"];
 
 function colorFor(str: string) {
   let hash = 0;
@@ -15,9 +15,26 @@ function colorFor(str: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-// Backend ile aynı uid hesaplama
 function uuidToUid(uuid: string): number {
   return parseInt(uuid.replace(/-/g, "").slice(0, 8), 16) >>> 0;
+}
+
+function HexAvatar({ name, size = 64 }: { name: string; size?: number }) {
+  return (
+    <div
+      className="flex items-center justify-center font-bold shadow-md"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: colorFor(name),
+        clipPath: HEX_CLIP,
+        fontSize: size * 0.35,
+        color: "#78350f",
+      }}
+    >
+      {name[0]?.toUpperCase()}
+    </div>
+  );
 }
 
 interface ParticipantTileProps {
@@ -27,7 +44,6 @@ interface ParticipantTileProps {
   isLocal?: boolean;
   localVideoRef?: React.RefObject<HTMLDivElement | null>;
   cameraOn?: boolean;
-  micOn?: boolean;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
@@ -38,13 +54,10 @@ function ParticipantTile({
   isLocal,
   localVideoRef,
   cameraOn,
-  micOn,
   onContextMenu,
 }: ParticipantTileProps) {
   const hasVideo = isLocal ? cameraOn : remoteUser?.hasVideo;
-  const hasAudio = isLocal ? micOn : remoteUser?.hasAudio;
 
-  // Uzak video track'ini DOM'a bağla
   useEffect(() => {
     if (!isLocal && remoteUser?.hasVideo && uid) {
       const el = document.getElementById(`agora-remote-${uid}`);
@@ -56,11 +69,14 @@ function ParticipantTile({
 
   return (
     <div
-      className="relative bg-amber-950 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-yellow-800 hover:border-yellow-500 transition"
-      style={{ aspectRatio: "16/9" }}
+      className="relative rounded-2xl overflow-hidden flex items-center justify-center border-2 transition-colors"
+      style={{
+        aspectRatio: "16/9",
+        background: "#fef3c7",
+        borderColor: "#fde68a",
+      }}
       onContextMenu={onContextMenu}
     >
-      {/* Video alanı — div HER ZAMAN DOM'da; track.play() ref'i null bulmaz */}
       {isLocal ? (
         <>
           <div
@@ -68,14 +84,7 @@ function ParticipantTile({
             className="absolute inset-0 w-full h-full"
             style={{ display: hasVideo ? "block" : "none" }}
           />
-          {!hasVideo && (
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg border-4 border-yellow-400"
-              style={{ backgroundColor: colorFor(username) }}
-            >
-              {username[0]?.toUpperCase()}
-            </div>
-          )}
+          {!hasVideo && <HexAvatar name={username} size={72} />}
         </>
       ) : (
         <>
@@ -84,32 +93,30 @@ function ParticipantTile({
             className="absolute inset-0 w-full h-full"
             style={{ display: hasVideo ? "block" : "none" }}
           />
-          {!hasVideo && (
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg border-4 border-yellow-400"
-              style={{ backgroundColor: colorFor(username) }}
-            >
-              {username[0]?.toUpperCase()}
-            </div>
-          )}
+          {!hasVideo && <HexAvatar name={username} size={72} />}
         </>
       )}
 
-      {/* Alt bilgi şeridi */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2 flex items-center justify-between">
-        <span className="text-xs font-medium text-yellow-100 truncate">
-          {isLocal ? `${username} (sen)` : username}
-        </span>
+      <div
+        className="absolute bottom-0 left-0 right-0 px-3 py-2 flex items-center justify-between"
+        style={{ background: "rgba(254,243,199,0.85)" }}
+      >
         <div className="flex items-center gap-1.5">
-          {!hasVideo && (
-            <span className="text-[10px] bg-red-600/80 text-white px-1.5 py-0.5 rounded-full">
-              kamera kapalı
-            </span>
-          )}
-          {hasAudio && (
-            <span className="text-[10px] text-green-400">🎙</span>
-          )}
+          <div
+            className="w-4 h-4 flex items-center justify-center text-[7px] font-bold"
+            style={{ backgroundColor: colorFor(username), clipPath: HEX_CLIP, color: "#78350f" }}
+          >
+            {username[0]?.toUpperCase()}
+          </div>
+          <span className="text-xs font-medium truncate" style={{ color: "#92400e" }}>
+            {isLocal ? `${username} (sen)` : username}
+          </span>
         </div>
+        {!hasVideo && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "#fde68a", color: "#b45309" }}>
+            kamera kapalı
+          </span>
+        )}
       </div>
     </div>
   );
@@ -123,10 +130,8 @@ interface Props {
   localUserId: string;
   localVideoRef: React.RefObject<HTMLDivElement | null>;
   cameraOn: boolean;
-  micOn: boolean;
   joined: boolean;
   onToggleCamera: () => void;
-  onToggleMic: () => void;
   onLeave: () => void;
   onSpam: (userId: string, username: string) => void;
 }
@@ -139,14 +144,11 @@ export default function RoomView({
   localUserId,
   localVideoRef,
   cameraOn,
-  micOn,
   joined,
   onToggleCamera,
-  onToggleMic,
   onLeave,
   onSpam,
 }: Props) {
-  // Socket katılımcılarına Agora track'lerini eşleştir
   function getRemoteForParticipant(p: Participant): RemoteUser | undefined {
     const uid = uuidToUid(p.userId);
     return remoteUsers.find((r) => r.uid === uid);
@@ -164,36 +166,46 @@ export default function RoomView({
       : "grid-cols-3";
 
   return (
-    <div className="flex flex-col h-full bg-amber-950 rounded-2xl overflow-hidden border-2 border-yellow-700">
+    <div
+      className="flex flex-col h-full rounded-2xl overflow-hidden border-2"
+      style={{ background: "#ffec8c", borderColor: "#fde68a" }}
+    >
       {/* Başlık */}
-      <div className="flex items-center justify-between px-4 py-3 bg-amber-900 border-b border-yellow-800">
-        <div className="flex items-center gap-2">
-          <Image src="/images/hexagon (1).png" alt="" width={24} height={24} />
-          <span className="text-sm font-bold text-yellow-100">{roomTitle}</span>
-          {joined && (
-            <span className="flex items-center gap-1 text-[10px] text-green-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+      <div
+        className="flex items-center justify-between px-5 py-3 border-b"
+        style={{ background: "#fef3c7", borderColor: "#fde68a" }}
+      >
+        <div className="flex items-center gap-2.5">
+          <Image src="/images/hexagon (1).png" alt="" width={22} height={22} />
+          <span className="text-sm font-bold tracking-wide" style={{ color: "#92400e" }}>{roomTitle}</span>
+          {joined ? (
+            <span className="flex items-center gap-1 text-[10px] font-medium" style={{ color: "#16a34a" }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               bağlı
             </span>
+          ) : (
+            <span className="text-[10px] animate-pulse" style={{ color: "#b45309" }}>bağlanıyor…</span>
           )}
         </div>
-        <span className="text-xs text-yellow-500">
-          {participants.length} katılımcı
-        </span>
+        <div className="flex items-center gap-2">
+          <div
+            className="w-5 h-5 flex items-center justify-center text-[8px] font-bold"
+            style={{ backgroundColor: "#ffb940", clipPath: HEX_CLIP, color: "#78350f" }}
+          >
+            {participants.length}
+          </div>
+          <span className="text-xs" style={{ color: "#b45309" }}>katılımcı</span>
+        </div>
       </div>
 
       {/* Video grid */}
       <div className={`flex-1 grid ${gridCols} gap-3 p-4 overflow-auto`}>
-        {/* Kendi tile'ı */}
         <ParticipantTile
           username={localUsername}
           isLocal
           localVideoRef={localVideoRef}
           cameraOn={cameraOn}
-          micOn={micOn}
         />
-
-        {/* Diğer katılımcılar */}
         {others.map((p) => {
           const remote = getRemoteForParticipant(p);
           return (
@@ -209,49 +221,45 @@ export default function RoomView({
             />
           );
         })}
-
-        {/* Kimse yoksa placeholder */}
         {others.length === 0 && (
-          <div className="flex items-center justify-center bg-amber-900/40 rounded-2xl border-2 border-dashed border-yellow-700" style={{ aspectRatio: "16/9" }}>
-            <p className="text-yellow-600 text-sm text-center px-4">
-              Başka kimse yok<br />
-              <span className="text-xs text-yellow-700">Biri katılınca burada görünür</span>
+          <div
+            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed gap-3"
+            style={{ aspectRatio: "16/9", borderColor: "#fde68a" }}
+          >
+            <div
+              className="w-12 h-12 flex items-center justify-center opacity-40"
+              style={{ backgroundColor: "#ffb940", clipPath: HEX_CLIP }}
+            />
+            <p className="text-sm text-center px-4" style={{ color: "#b45309" }}>
+              Başka kimse yok
+              <br />
+              <span className="text-xs" style={{ color: "#d97706" }}>Biri katılınca burada görünür</span>
             </p>
           </div>
         )}
       </div>
 
       {/* Alt kontroller */}
-      <div className="flex items-center justify-center gap-3 px-4 py-3 bg-amber-900 border-t border-yellow-800">
-        {!joined && (
-          <span className="text-xs text-yellow-500 animate-pulse">Bağlanıyor…</span>
-        )}
-
-        <button
-          onClick={onToggleMic}
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-xl text-xs font-semibold border transition ${
-            micOn
-              ? "bg-yellow-400 border-yellow-500 text-amber-900"
-              : "bg-amber-800 border-yellow-700 text-yellow-300 hover:bg-amber-700"
-          }`}
-        >
-          {micOn ? "🎙 Mikrofon" : "🔇 Sessiz"}
-        </button>
-
+      <div
+        className="flex items-center justify-center gap-3 px-4 py-3 border-t"
+        style={{ background: "#fef3c7", borderColor: "#fde68a" }}
+      >
         <button
           onClick={onToggleCamera}
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-xl text-xs font-semibold border transition ${
+          className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold border transition"
+          style={
             cameraOn
-              ? "bg-yellow-400 border-yellow-500 text-amber-900"
-              : "bg-amber-800 border-yellow-700 text-yellow-300 hover:bg-amber-700"
-          }`}
+              ? { background: "#ffb940", borderColor: "#f59e0b", color: "#78350f" }
+              : { background: "#fef3c7", borderColor: "#fde68a", color: "#b45309" }
+          }
         >
-          {cameraOn ? "📷 Kamera" : "📷 Kapalı"}
+          {cameraOn ? "📷 Kamera Açık" : "📷 Kamera Kapalı"}
         </button>
 
         <button
           onClick={onLeave}
-          className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-700 border border-red-600 text-white hover:bg-red-600 transition"
+          className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold border transition"
+          style={{ background: "#fee2e2", borderColor: "#fca5a5", color: "#dc2626" }}
         >
           🚪 Odadan Çık
         </button>

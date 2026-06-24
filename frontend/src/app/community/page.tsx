@@ -2,10 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { motion } from "framer-motion";
 import { api, type Room } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
+
+// Pointy-top hexagon: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)
+// Regular hex ratio: H = W * (2/√3) ≈ W * 1.1547
+const HEX_W = 170;
+const HEX_H = Math.round(HEX_W * 1.1547); // 196
+const COLS = 3;
+
+const HEX_CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
+
+// Row spacing = HEX_H * 0.75 (hexes interlock, no gap, no overlap of shapes)
+const ROW_STEP = Math.round(HEX_H * 0.75); // 147
+
+const HEX_COLORS = ["#ffb940", "#ffd34f"];
 
 export default function Community() {
   const router = useRouter();
@@ -21,95 +33,67 @@ export default function Community() {
       .finally(() => setLoading(false));
   }, [accessToken]);
 
-  return (
-    <main className="min-h-screen p-8 flex gap-10 items-start">
-      {/* Sol — dekoratif altıgen */}
-      <div className="shrink-0 sticky top-8 hidden lg:block">
-        <div
-          className="relative"
-          style={{ width: 220, height: 252 }}
-        >
-          <div
-            className="absolute inset-0 overflow-hidden"
-            style={{
-              clipPath:
-                "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
-            }}
-          >
-            <Image
-              src="/images/lofi-girl.jpg"
-              alt="lofi"
-              fill
-              className="object-cover"
-              priority
-            />
-          </div>
-          <div className="absolute inset-0 pointer-events-none">
-            <Image
-              src="/images/hexagon (1).png"
-              alt=""
-              fill
-              className="object-contain"
-            />
-          </div>
-        </div>
-      </div>
+  const totalRows = Math.ceil(rooms.length / COLS);
+  const containerW = COLS * HEX_W + Math.floor(HEX_W / 2); // +half for odd row offset
+  const containerH = (totalRows - 1) * ROW_STEP + HEX_H + 32;
 
-      {/* Sağ — oda listesi */}
-      <div className="flex-1 min-w-0">
-        <h1 className="text-3xl font-bold text-amber-900 mb-2 tracking-tight">
+  return (
+    <main className="min-h-screen p-8 flex flex-col items-center" style={{ background: "#ffec8c" }}>
+      <div className="w-full max-w-4xl">
+        <h1 className="text-4xl font-bold mb-2 tracking-tight" style={{ color: "#92400e" }}>
           TOPLULUK ODALARI
         </h1>
-        <p className="text-sm text-amber-600 mb-8">
+        <p className="text-base mb-10" style={{ color: "#b45309" }}>
           Bir odaya gir, sorularını sor ve cevapla.
         </p>
 
         {loading && (
-          <p className="text-amber-500 text-sm animate-pulse">Odalar yükleniyor…</p>
+          <p className="animate-pulse" style={{ color: "#b45309" }}>Odalar yükleniyor…</p>
         )}
 
         {!loading && rooms.length === 0 && (
-          <p className="text-amber-500 text-sm">Henüz topluluk odası yok.</p>
+          <p style={{ color: "#b45309" }}>Henüz topluluk odası yok.</p>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {rooms.map((room, i) => (
-            <motion.button
-              key={room.id}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.06 }}
-              onClick={() => router.push(`/community/${room.id}`)}
-              className="text-left bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-5 hover:border-yellow-400 hover:shadow-md transition group"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-full bg-yellow-200 border-2 border-yellow-400 flex items-center justify-center">
-                  <Image
-                    src="/images/beehiveee.png"
-                    alt=""
-                    width={24}
-                    height={24}
-                  />
-                </div>
-                <span className="text-[11px] text-amber-400 font-medium bg-yellow-100 px-2 py-0.5 rounded-full border border-yellow-200">
-                  Topluluk
-                </span>
-              </div>
-              <h2 className="font-bold text-amber-900 text-sm leading-snug mb-1 group-hover:text-amber-700">
-                {room.title}
-              </h2>
-              {room.owner && (
-                <p className="text-xs text-amber-500">
-                  {room.owner.name} tarafından oluşturuldu
-                </p>
-              )}
-              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-amber-600">
-                <span>Odaya Gir</span>
-                <span className="group-hover:translate-x-0.5 transition-transform">→</span>
-              </div>
-            </motion.button>
-          ))}
-        </div>
+        {!loading && rooms.length > 0 && (
+          <div className="relative" style={{ width: containerW, height: containerH }}>
+            {rooms.map((room, i) => {
+              const row = Math.floor(i / COLS);
+              const col = i % COLS;
+              const isOddRow = row % 2 === 1;
+
+              const x = col * HEX_W + (isOddRow ? Math.floor(HEX_W / 2) : 0);
+              const y = row * ROW_STEP;
+              const bg = HEX_COLORS[i % HEX_COLORS.length];
+
+              return (
+                <motion.button
+                  key={room.id}
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: i * 0.07, type: "spring", stiffness: 220, damping: 20 }}
+                  whileHover={{ scale: 1.07, zIndex: 10 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => router.push(`/community/${room.slug || room.id}`)}
+                  className="absolute flex flex-col items-center justify-center text-center cursor-pointer select-none"
+                  style={{
+                    left: x,
+                    top: y,
+                    width: HEX_W,
+                    height: HEX_H,
+                    clipPath: HEX_CLIP,
+                    background: bg,
+                    zIndex: 1,
+                  }}
+                >
+                  <span className="font-bold text-base leading-tight px-6 drop-shadow-sm" style={{ color: "#78350f" }}>
+                    {room.title}
+                  </span>
+                </motion.button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </main>
   );

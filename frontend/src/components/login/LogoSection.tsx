@@ -7,22 +7,17 @@ interface LogoSectionProps {
   username?: string | null;
 }
 
+const LETTERS = ["k", "o", "z", "a", "n"] as const;
+
 export function LogoSection({ username }: LogoSectionProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="flex items-center gap-4"
+      className="flex items-center gap-6"
     >
-      <Image
-        src="/images/koZanlogo.png"
-        alt="koZan logo"
-        width={110}
-        height={110}
-        priority
-      />
-
+      {/* koZanlogo.png kaldırıldı, sadece harfler kalacak */}
       <AnimatePresence mode="wait">
         {username ? (
           <motion.div
@@ -33,8 +28,8 @@ export function LogoSection({ username }: LogoSectionProps) {
             transition={{ duration: 0.4 }}
             className="flex flex-col"
           >
-            <span className="text-sm text-amber-700 font-medium">Hoşgeldin,</span>
-            <span className="text-2xl font-bold text-amber-900">{username}</span>
+            <span className="text-2xl text-amber-700 font-medium">Hoşgeldin,</span>
+            <span className="text-5xl font-bold text-amber-900">{username}</span>
           </motion.div>
         ) : (
           <motion.div
@@ -43,10 +38,24 @@ export function LogoSection({ username }: LogoSectionProps) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
+            className="flex items-end gap-2"
           >
-            <span className="text-4xl font-bold tracking-wide text-amber-900">
-              koZan
-            </span>
+            {LETTERS.map((letter, i) => (
+              <motion.div
+                key={letter}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.07, duration: 0.3 }}
+              >
+                <Image
+                  src={`/images/${letter}.png`}
+                  alt={letter}
+                  width={110}
+                  height={110}
+                  className="object-contain"
+                />
+              </motion.div>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>

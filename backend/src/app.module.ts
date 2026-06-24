@@ -10,6 +10,8 @@ import { QuestionsModule } from './questions/questions.module';
 import { NotesModule } from './notes/notes.module';
 import { XpModule } from './xp/xp.module';
 import { RedisModule } from './redis/redis.module';
+import { StudySessionsModule } from './study-sessions/study-sessions.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
   imports: [
@@ -23,6 +25,8 @@ import { RedisModule } from './redis/redis.module';
     NotesModule,
     XpModule,
     RedisModule,
+    StudySessionsModule,
+    MonitoringModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

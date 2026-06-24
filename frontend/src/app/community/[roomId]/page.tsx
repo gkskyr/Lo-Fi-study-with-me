@@ -1,7 +1,6 @@
 "use client";
 
 import { use, useState, useEffect } from "react";
-import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { useRoomSocket } from "@/components/community/useRoomSocket";
@@ -17,6 +16,10 @@ export default function RoomPage({
 }) {
   const { roomId } = use(params);
   const { accessToken, username } = useAuthStore();
+
+  const localUserId = accessToken
+    ? (JSON.parse(atob(accessToken.split(".")[1])) as { sub: string }).sub
+    : "";
 
   const [inRoom, setInRoom] = useState(false);
   const [room, setRoom] = useState<Room | null>(null);
@@ -36,12 +39,8 @@ export default function RoomPage({
     inRoom ? accessToken : null
   );
 
-  const { joined, joinError, localVideoRef, remoteUsers, cameraOn, micOn, toggleCamera, toggleMic, leave } =
+  const { joined, joinError, localVideoRef, remoteUsers, cameraOn, toggleCamera, leave } =
     useAgora(roomId, inRoom ? accessToken : null, inRoom);
-
-  function handleEnterRoom() {
-    setInRoom(true);
-  }
 
   async function handleLeave() {
     await leave();
@@ -58,126 +57,144 @@ export default function RoomPage({
       className="min-h-screen flex overflow-hidden"
       onClick={() => contextMenu && setContextMenu(null)}
     >
-      {/* ── Oda Kapalı: altıgen + Q&A tam genişlik ── */}
-      <AnimatePresence mode="wait">
-        {!inRoom && (
-          <motion.div
-            key="lobby"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="flex-1 flex gap-6 p-6 items-start"
-          >
-            {/* Tıklanabilir altıgen */}
-            <div className="shrink-0 sticky top-6">
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={handleEnterRoom}
-                className="relative block cursor-pointer group"
-                style={{ width: 300, height: 346 }}
-                title="Odaya gir"
+      {/* Sol — canlı oda butonu */}
+      <div className="shrink-0 flex items-center justify-center py-8 px-2" style={{ width: 72 }}>
+        <AnimatePresence mode="wait">
+          {!inRoom ? (
+            <motion.button
+              key="join-btn"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.25 }}
+              whileHover={{ scale: 1.06 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setInRoom(true)}
+              title="Canlı odaya gir"
+              className="flex flex-col items-center gap-2 cursor-pointer group"
+            >
+              {/* Altıgen buton */}
+              <div
+                className="w-12 h-14 flex items-center justify-center text-white text-xl font-bold shadow-lg transition-all duration-200"
+                style={{
+                  background: "linear-gradient(135deg, #fbbf24, #f59e0b)",
+                  clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
+                  filter: "drop-shadow(0 2px 8px #fbbf2466)",
+                }}
               >
-                {/* lofi girl clip */}
-                <div
-                  className="absolute inset-0 overflow-hidden"
-                  style={{
-                    clipPath:
-                      "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
-                  }}
-                >
-                  <Image
-                    src="/images/lofi-girl.jpg"
-                    alt="lofi"
-                    fill
-                    sizes="300px"
-                    className="object-cover"
-                    priority
-                  />
-                  {/* hover overlay */}
-                  <div className="absolute inset-0 bg-amber-900/0 group-hover:bg-amber-900/40 transition-colors duration-300 flex items-center justify-center">
-                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-yellow-100 font-bold text-lg drop-shadow">
-                      Odaya Gir →
-                    </span>
-                  </div>
-                </div>
-                {/* hexagon frame */}
-                <div className="absolute inset-0 pointer-events-none">
-                  <Image
-                    src="/images/hexagon (1).png"
-                    alt=""
-                    fill
-                    sizes="300px"
-                    loading="eager"
-                    className="object-contain"
-                  />
-                </div>
-              </motion.button>
-              <p className="text-center text-xs text-amber-600 mt-3 font-medium">
+                🎥
+              </div>
+              <span
+                className="text-[10px] font-semibold text-center leading-tight"
+                style={{ color: "#b45309", writingMode: "vertical-rl", textOrientation: "mixed", transform: "rotate(180deg)" }}
+              >
+                Canlı Odaya Gir
+              </span>
+            </motion.button>
+          ) : (
+            <motion.button
+              key="leave-btn"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.25 }}
+              whileHover={{ scale: 1.06 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleLeave}
+              title="Odadan ayrıl"
+              className="flex flex-col items-center gap-2 cursor-pointer"
+            >
+              <div
+                className="w-12 h-14 flex items-center justify-center text-white text-xl font-bold shadow-lg transition-all duration-200"
+                style={{
+                  background: "linear-gradient(135deg, #f87171, #dc2626)",
+                  clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
+                  filter: "drop-shadow(0 2px 8px #dc262644)",
+                }}
+              >
+                ✕
+              </div>
+              <span
+                className="text-[10px] font-semibold text-center leading-tight"
+                style={{ color: "#dc2626", writingMode: "vertical-rl", textOrientation: "mixed", transform: "rotate(180deg)" }}
+              >
+                Odadan Ayrıl
+              </span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* İçerik */}
+      <div className="flex-1 min-w-0 flex overflow-hidden">
+        <AnimatePresence mode="wait">
+          {!inRoom && (
+            <motion.div
+              key="lobby"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="flex-1 p-6 pt-8"
+            >
+              <h1 className="text-2xl font-bold mb-6" style={{ color: "#92400e" }}>
                 {room?.title ?? "Oda yükleniyor…"}
-              </p>
-            </div>
-
-            {/* Q&A tam genişlik */}
-            <div className="flex-1 min-w-0 pt-2">
-              <QASection roomId={roomId} newQuestions={newQuestions} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Oda Açık: geniş RoomView sol + dar Q&A sağ ── */}
-      <AnimatePresence mode="wait">
-        {inRoom && (
-          <motion.div
-            key="room"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.35 }}
-            className="flex-1 flex gap-0"
-          >
-            {/* RoomView — sayfanın ~%72'si */}
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: "72%", opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.4, ease: "easeInOut" }}
-              className="p-4 min-w-0"
-            >
-              <RoomView
-                roomTitle={room?.title ?? "Oda"}
-                participants={participants}
-                remoteUsers={remoteUsers}
-                localUsername={username ?? "sen"}
-                localUserId={""}
-                localVideoRef={localVideoRef}
-                cameraOn={cameraOn}
-                micOn={micOn}
-                joined={joined}
-                onToggleCamera={toggleCamera}
-                onToggleMic={toggleMic}
-                onLeave={handleLeave}
-                onSpam={(userId, uname) => handleSpam(userId, uname)}
-              />
+              </h1>
+              <QASection roomId={roomId} newQuestions={newQuestions} accessToken={accessToken} />
             </motion.div>
+          )}
+        </AnimatePresence>
 
-            {/* Q&A sidebar — %28 */}
+        <AnimatePresence mode="wait">
+          {inRoom && (
             <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: "28%", opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.4, ease: "easeInOut", delay: 0.05 }}
-              className="border-l-2 border-yellow-300 overflow-y-auto p-4 min-w-0" style={{ backgroundColor: "#ffec8c" }}
+              key="room"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.35 }}
+              className="flex-1 flex gap-0 min-w-0"
             >
-              <QASection roomId={roomId} newQuestions={newQuestions} compact />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              {/* RoomView — %72 */}
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: "72%", opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.4, ease: "easeInOut" }}
+                className="p-4 min-w-0"
+              >
+                <RoomView
+                  roomTitle={room?.title ?? "Oda"}
+                  participants={participants}
+                  remoteUsers={remoteUsers}
+                  localUsername={username ?? "sen"}
+                  localUserId={localUserId}
+                  localVideoRef={localVideoRef}
+                  cameraOn={cameraOn}
+                  joined={joined}
+                  onToggleCamera={toggleCamera}
+                  onLeave={handleLeave}
+                  onSpam={(userId, uname) => handleSpam(userId, uname)}
+                />
+              </motion.div>
 
-      {/* join/leave toastları + Agora hatası */}
+              {/* Q&A sidebar — %28 */}
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: "28%", opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.4, ease: "easeInOut", delay: 0.05 }}
+                className="border-l-2 overflow-y-auto p-4 min-w-0"
+                style={{ borderColor: "#fde68a", backgroundColor: "#fef3c7" }}
+              >
+                <QASection roomId={roomId} newQuestions={newQuestions} compact accessToken={accessToken} />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Toast bildirimleri */}
       <div className="fixed top-4 right-4 flex flex-col gap-2 pointer-events-none z-50">
         <AnimatePresence>
           {joinError && (

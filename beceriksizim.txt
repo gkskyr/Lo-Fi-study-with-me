@@ -1,0 +1,380 @@
+================================================================================
+  koZan — Denetim Modülü Teknik Savaş Günlüğü
+  Bir sonraki ajana devir belgesi
+  Tarih: 2026-06-10
+================================================================================
+
+BU BELGE NE:
+  Öğrenci çalışma oturumu sırasında PC ekranının denetlenmesi için yazılan
+  monitoring modülünün başından sonuna tüm teknik tarihi. Denenen her yöntem,
+  neden çalışmadığı, mevcut mimari durum ve gerçek çözüm yolu burada.
+
+--------------------------------------------------------------------------------
+PROBLEM TANIMI
+--------------------------------------------------------------------------------
+
+Kullanıcı (öğrenci) kalibrasyon aşamasında bir "referans materyal" görseli
+sisteme tanıtıyor. Bu materyal bir ders kitabı, defter, tablet ekranı veya
+herhangi bir fiziksel nesne olabilir. Çalışma oturumu boyunca periyodik olarak
+öğrencinin PC ekran görüntüsü alınıyor ve bu ekranda referans materyalin
+görünüp görünmediği doğrulanıyor.
+
+GİRDİLER:
+  - Referans görsel: kamerayla veya dosya yüklemeyle alınmış, referans nesnenin
+    close-up fotoğrafı. Perspektif bükülmesi, kötü ışık, gürültü olabilir.
+  - Ekran görüntüsü: dijital, temiz, tam ekran ya da tarayıcı sekmesi.
+    Referans nesne ekranın küçük bir köşesinde, belki 80x60 piksel alanda.
+
+TEMEL ZORLUK: "Cluttered Scene Sub-image Localization"
+  Bu problem bilgisayarlı görü literatüründe en zor problemlerden biridir.
+  Bir görüntüdeki küçük bir nesneyi başka bir karmaşık sahnede bulmak,
+  global feature matching ile pratikte çözülemiyor. Bunu baştan bilseydik
+  belki 3 hafta kurtarırdık.
+
+--------------------------------------------------------------------------------
+GÜVENLİK KISITI (KRİTİK)
+--------------------------------------------------------------------------------
+
+Tüm eşleştirme mantığı BACKEND'de olmalı. Frontend'de yapılan her şey
+DevTools ile bypass edilebilir. Bu yüzden tüm algoritmalar NestJS backend
+veya ayrı bir Python servisi üzerinde koşuyor. Frontend sadece ekran
+görüntüsü alıp backend'e gönderiyor.
+
+--------------------------------------------------------------------------------
+YÖNTEM 1: dHash (Difference Hash)
+--------------------------------------------------------------------------------
+
+NE YAPTI:
+  Görsel 8x8'e küçültülür, her piksel komşusundan büyük mü küçük mü diye
+  bakılır, 64-bit binary hash üretilir. İki hash arasındaki Hamming mesafesi
+  benzerlik skoru olarak kullanılır.
+
+NEDEN ÇALIŞMADI:
+  dHash global bir imzadır. Ekran görüntüsünün tamamına bakıyor,
+  referans nesnenin ekranın bir köşesinde olup olmadığını anlayamıyor.
+  Kullanıcı ekranı değiştirdiğinde hash tamamen değişiyor.
+
+DOSYA DURUMU: frontend/src/lib/monitoring.ts içindeki diffHash, hashSimilarity,
+  fileToDiffHash fonksiyonları SİLİNDİ.
+
+--------------------------------------------------------------------------------
+YÖNTEM 2: CLIP Global Embeddings (@huggingface/transformers)
+--------------------------------------------------------------------------------
+
+NE YAPTI:
+  Her iki görseli CLIP modeliyle 512-boyutlu semantik vektöre çevirip
+  cosine similarity hesaplıyordu. Fikir: "anlamsal olarak aynı şeyi
+  gösteriyorlarsa benzerdir."
+
+NEDEN ÇALIŞMADI:
+  CLIP TÜM görsele bakıyor. Ekran görüntüsünün %90'ı YouTube'sa ve
+  referans kitap sağ alt köşede %5 alanda görünüyorsa CLIP bu ekranı
+  "YouTube videoları olan bir ekran" olarak kodluyor, kitabı görmüyor.
+  Test: Kazuha (anime karakter) referans görseli → Instagram sayfası →
+  %92 benzerlik. Tamamen anlamlı. CLIP lokalizasyon yapamaz.
+
+DOSYA DURUMU:
+  - @huggingface/transformers paketi package.json'dan silindi.
+  - frontend/src/lib/clip.ts tamamen yeniden yazıldı, artık sadece
+    isSafari() ve isIOS() browser detection fonksiyonları içeriyor.
+  - loadClipModel, clipProgress tüm UI'lardan temizlendi.
+
+--------------------------------------------------------------------------------
+YÖNTEM 3: NCC (Normalized Cross-Correlation) — Template Matching
+--------------------------------------------------------------------------------
+
+NE YAPTI:
+  Referans görseli farklı ölçeklerde (200px, 120px, 80px, 50px genişlikte)
+  ekran görüntüsü üzerinde piksel piksel kaydırarak arar. Her konumda
+  ortalama çıkarılmış normalize çarpım toplamı hesaplanır. En yüksek NCC
+  skoru similarity olarak döner.
+
+KOD YERI: frontend/src/lib/templateMatch.ts (silindi)
+
+NEDEN ÇALIŞMADI:
+  1. Ölçek duyarlılığı: Referans 80px'e scale edilmişken ekranda 60px'lik
+     nesne varsa eşleşme yok.
+  2. Rotasyon duyarlılığı: 5 derecelik eğim NCC'yi mahveder.
+  3. False positive problemi: 32-50px ölçekte NCC yeterince discriminative
+     değil. Rastgele yamalar "eşleşiyor". Test: inek fotoğrafı referans,
+     YouTube sayfası → %58 ile GEÇER. Hiçbir anlam ifade etmiyor.
+  4. Perspektif farkı: Referans kamerayla çekilmiş (bükülmüş, ışıklı),
+     ekran görüntüsü dijital ve temiz. NCC bu farkı kaldıramıyor.
+
+DOSYA DURUMU: frontend/src/lib/templateMatch.ts SİLİNDİ.
+
+--------------------------------------------------------------------------------
+YÖNTEM 4: ORB (FAST-9 corners + BRIEF-256 descriptors) — Frontend
+--------------------------------------------------------------------------------
+
+NE YAPTI:
+  Her iki görselde FAST-9 algoritmasıyla köşe noktaları (keypoint) bulur.
+  Her köşe etrafındaki 31x31 piksellik bölgeye BRIEF-256 uygular:
+  256 rastgele piksel çifti karşılaştırması → 256-bit binary descriptor
+  (8 adet uint32 olarak saklanır). İki descriptor arasındaki benzerlik
+  Hamming mesafesiyle ölçülür (XOR + popcount).
+
+  Lowe's ratio test: best_dist < maxDist && best_dist < second_best * 0.75
+  Bu test belirsiz eşleşmeleri eler.
+
+  Multi-scale: Referans 4 farklı ölçekte işlenir [200, 120, 80, 50 px],
+  en iyi ölçeğin skoru döner. Ekran görüntüsü 640px'e scale edilir.
+
+KOD YERI: frontend/src/lib/orb.ts (silindi, backend'e taşındı)
+
+NEDEN ÇALIŞMADI (FRONTEND):
+  1. Güvenlik açığı: Frontend'deki her şey DevTools ile bypass edilir.
+     Öğrenci JavaScript'i manipüle edebilir.
+  2. False positive: Ratio test olmadan %58 false positive (inek/YouTube).
+     Ratio test eklenince azaldı ama hala sorunlar vardı.
+  3. Browser'da canvas API ile performans sorunları.
+
+KARAR: Backend'e taşındı.
+
+--------------------------------------------------------------------------------
+YÖNTEM 5: ORB — Backend (Node.js, sharp ile)
+--------------------------------------------------------------------------------
+
+NE YAPTI:
+  Aynı ORB algoritması Node.js'te sharp kütüphanesiyle yeniden yazıldı.
+  sharp: Browser canvas yokken Node.js'te görsel resize/grayscale için.
+
+KOD YERI: backend/src/monitoring/orb.ts (silindi)
+VERİTABANI: MonitoringRef.orbData (Json) — ORB descriptor'ları saklanıyordu.
+
+NEDEN ÇALIŞMADI:
+  1. Aynı temel problem: Ekranda nesne küçükse (80x50 px) ile 640x480
+     ekran görüntüsü arasında ORB descriptor eşleşmesi kurulamıyor.
+     Ölçek farkı çok büyük.
+  2. Hamming threshold (60) ve Lowe's ratio test (0.75) tuned değildi.
+  3. RANSAC/Homography eksikliği: Gerçek ORB implementasyonlarında
+     (OpenCV) eşleşme sonrasında RANSAC ile geometrik doğrulama yapılır
+     (findHomography). Bu olmadan eşleşmeler spatially tutarsız olabiliyor.
+     Kütüphane desteği olmadan Node.js'te RANSAC yazmak pratik değil.
+  4. Test: %8 threshold ile bir YouTube sayfası referans nesne olmadan
+     da geçebiliyordu.
+
+VERİTABANI DURUMU: orbData: Json kolonu → refImage: Bytes olarak değiştirildi.
+  db push sırasında eski MonitoringRef satırı silindi.
+
+--------------------------------------------------------------------------------
+YÖNTEM 6: LightGlue (SuperPoint + LightGlue) — Python Mikroservis
+--------------------------------------------------------------------------------
+
+NE YAPTI:
+  Python FastAPI servisi olarak eklendi (port 8001).
+  SuperPoint: Öğrenilmiş keypoint detector (elle yazılmış FAST yerine
+  neural network tabanlı). Işık, açı ve ölçek varyasyonlarına daha dayanıklı.
+  LightGlue: Graph Neural Network tabanlı feature matcher. İki görüntü
+  arasındaki keypoint çiftlerini öğrenilmiş confidence ile eşleştirir.
+  RANSAC olmadan geometrik filtering yapıyor (öğrenilmiş).
+
+  NestJS monitoring.service.ts artık Python servise HTTP POST yapıyor.
+  Referans görseli ham byte olarak veritabanında (refImage: Bytes) saklanıyor.
+
+KOD YERI: matcher/main.py (aktif), matcher/requirements.txt
+BACKEND: backend/src/monitoring/monitoring.service.ts (fetch ile HTTP call)
+KURULUM:
+  pip install git+https://github.com/cvg/LightGlue.git
+  pip install fastapi uvicorn pillow numpy python-multipart
+  pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+  python -m uvicorn main:app --port 8001
+
+MEVCUT DURUM (ÇALIŞMIYOR — AYNI TEMEL SORUN):
+  Test: Referans görsel ekranda küçük göründüğünde → %0 benzerlik.
+  Test: Farklı sayfa → %8.4 benzerlik → false positive (threshold=0.08).
+
+  NEDEN ÇALIŞMIYOR:
+  LightGlue da global matching yapıyor. Her iki görsel 640x480'e resize
+  ediliyor. Referans nesne ekranda 80x50 piksel alanda görünüyorsa:
+    - Referans görsel: nesne 640x480 piksele yayılmış = büyük, detaylı
+    - Ekran görüntüsü: nesne 80x50 piksel = küçük, detaysız
+  Ölçek farkı ~8x. SuperPoint her ikisinde keypoint buluyor ama farklı
+  ölçekte oldukları için LightGlue bunları eşleştiremiyor.
+
+  Bu ORB'un RANSAC eksikliğinden farklı bir problem. RANSAC eklesen de
+  çözemezsin — keypoint'ler zaten eşleşmiyor, spatial verification yapmak
+  için önce eşleşme gerekiyor.
+
+THRESHOLD SORUNU:
+  matcher/main.py içinde THRESHOLD = 0.08 (8%)
+  Bu çok düşük. Herhangi bir sayfa 5-10% false positive verebiliyor.
+  Ama threshold'u yükseltirsen (örn. 0.20) gerçek pozitifler de
+  eşik altında kalıyor çünkü küçük nesnede zaten az eşleşme var.
+
+--------------------------------------------------------------------------------
+TEMEL PROBLEM ÖZETI
+--------------------------------------------------------------------------------
+
+Tüm denenenlerde ortak başarısızlık nedeni:
+
+  PROBLEM: Referans görsel 640x480'de ~nesnenin tamamı.
+           Ekran görüntüsü 640x480'de nesne ~80x50 piksel küçücük bir köşede.
+           Ölçek farkı nedeniyle hiçbir global feature matching çalışmıyor.
+
+Bu "Cluttered Scene Sub-image Localization" problemidir. Klasik CV
+literatüründe bu problemi çözmek için sliding window + pyramid yaklaşımı
+veya modern object detection (YOLO, Faster-RCNN gibi) kullanılır.
+
+--------------------------------------------------------------------------------
+GERÇEKÇİ ÇÖZÜM YOLLARI (SIRASIZ)
+--------------------------------------------------------------------------------
+
+YÖNTEM A: Multi-scale Sliding Window + LightGlue (DOĞRU AMA YAVAŞ)
+  Ekran görüntüsünü farklı pencere boyutlarında (128x128, 256x256, 384x384)
+  kaydırarak her pencere için LightGlue çalıştır. En yüksek skor alınan
+  pencere = nesnenin yeri.
+  DEZAVANTAJ: Bir ekran görüntüsü için ~50-200 forward pass = 10-30 saniye.
+  CPU'da pratik değil. GPU ile 2-3 saniyeye düşebilir.
+
+YÖNTEM B: YOLO Custom Object Detection (UZUN VADELİ EN DOĞRU)
+  Veri: Her kullanıcının referans görseli + ekran görüntüsü çifti.
+  Ultralytics YOLOv11 ile few-shot object detection.
+  DEZAVANTAJ: Her kullanıcı için ayrı model eğitmek pratik değil.
+  Genel bir model için binlerce etiketli veri lazım.
+
+YÖNTEM C: SORUYU DEĞİŞTİR — CLIP Doğru Sorulunca Çalışır
+  "Referans nesne ekranda küçük görünüyor mu?" sorusu yerine
+  "Öğrenci referans materiyal ile ilgili içerik görüyor mu?" sor.
+
+  Örnek: Referans = matematik ders kitabı kapağı.
+  Soru: "Ekranda matematik ile ilgili bir şey var mı?"
+
+  Bu soru için CLIP mükemmel çalışır. Ekranın tamamı "matematik içeriği"
+  mi yoksa "YouTube/oyun/sosyal medya" mı diye ayrıştırabilir.
+
+  PROBLEM: "Öğrenci ekranında referans materyalin kendisini görmeli"
+  kısıtı varsa bu yaklaşım işe yaramaz. Referans kitabı kapatıp PDF
+  okursa geçer. Use case'e bağlı.
+
+YÖNTEM D: LoFTR (Detector-Free Feature Matching)
+  github: kornia/kornia (zaten kurulu — LightGlue bağımlılığı olarak geldi)
+  LoFTR dense matching yapıyor: keypoint detect etmeden transformer ile
+  her piksel için matching yapıyor. Büyük ölçek farklarını daha iyi kaldırır.
+
+  Kullanım:
+    from kornia.feature import LoFTR
+    matcher = LoFTR(pretrained="outdoor")  # veya "indoor"
+
+  AVANTAJ: Küçük nesnelerde ORB/LightGlue'dan çok daha iyi.
+  Kornia zaten kurulu (pip install git+... ile LightGlue ile birlikte geldi).
+  DEZAVANTAJ: CPU'da LightGlue'dan ~2x yavaş.
+
+YÖNTEM E: Vision LLM (Gemini/GPT-4o) — Gizlilik Sorunu
+  Gemini 2.5 Flash API veya GPT-4o-mini: İki görseli modele gönder,
+  "referans nesne ekranda görünüyor mu?" diye sor.
+  AVANTAJ: Kesinlikle çalışır. Ölçek, açı, perspektif hiç sorun değil.
+  DEZAVANTAJ: Ekran görüntülerini Google/OpenAI'a gönderiyorsun.
+  Öğrencilerin ekran içerikleri 3. şahıs sunucularına gidiyor.
+  Bu proje için kabul edilemez bulundu.
+
+--------------------------------------------------------------------------------
+ÖNERİ: LoFTR ile Dene (Mevcut Kurulumda Var)
+--------------------------------------------------------------------------------
+
+Kornia zaten kurulu. matcher/main.py'yi LoFTR kullanacak şekilde değiştir:
+
+  from kornia.feature import LoFTR
+  import kornia
+
+  matcher = LoFTR(pretrained="outdoor").eval()
+
+  def match_loftr(ref_bytes, screen_bytes):
+      img0 = load_as_gray_tensor(ref_bytes)    # [1,1,H,W] float32
+      img1 = load_as_gray_tensor(screen_bytes)
+
+      input_dict = {"image0": img0, "image1": img1}
+      with torch.inference_mode():
+          correspondences = matcher(input_dict)
+
+      conf = correspondences["confidence"]
+      num_good = (conf > 0.9).sum().item()
+      score = num_good / max(img0.shape[-1] * img0.shape[-2] / 1000, 1)
+      return score
+
+  LoFTR "outdoor" weights ~100MB, ilk çalıştırmada otomatik indirir.
+
+Eğer LoFTR da çözemezse multi-scale sliding window + LoFTR kombinasyonu
+dene: 3-4 farklı crop bölgesi için çalıştır, max skoru al.
+
+--------------------------------------------------------------------------------
+MEVCUT MİMARİ (2026-06-10 itibarıyla)
+--------------------------------------------------------------------------------
+
+DOSYA YAPISI:
+  backend/src/monitoring/
+    monitoring.controller.ts  — POST /calibrate, POST /check, GET /status, DELETE /calibration
+    monitoring.service.ts     — Python servisine HTTP call yapıyor
+    monitoring.module.ts      — PrismaModule import, controller+service register
+    [orb.ts SİLİNDİ]
+
+  matcher/
+    main.py                   — FastAPI, port 8001, LightGlue (çalışıyor ama yanlış sonuç)
+    requirements.txt          — bağımlılıklar
+
+  frontend/src/components/personal-room/
+    useMonitoring.ts          — Camera: IDB, PC: backend API call
+    CalibrationView.tsx       — CLIP kodu temizlendi
+
+  frontend/src/lib/
+    api.ts                    — monitoringStatus, monitoringCalibrate, monitoringCheck, monitoringDeleteCalibration
+    clip.ts                   — sadece isSafari(), isIOS() browser detection
+    monitoring.ts             — thumbprint, similarity (kamera için), dHash SİLİNDİ
+
+VERİTABANI (Supabase PostgreSQL):
+  MonitoringRef tablosu:
+    id: String (uuid)
+    userId: String (unique)
+    refImage: Bytes  — ham JPEG buffer, kalibrasyon görseli
+    updatedAt: DateTime
+
+  NOT: Eski orbData: Json kolonu KALDIRILDI, refImage: Bytes EKLENDİ.
+  db push ile yapıldı (migrate dev drift nedeniyle çalışmadı).
+
+ÇEVRİM:
+  1. Kalibrasyon: Kullanıcı dosya yükler → NestJS /calibrate → refImage DB'ye kaydedilir
+  2. Check: Frontend ekran yakalar (getDisplayMedia) → JPEG blob → NestJS /check
+     → Python matcher/main.py /match endpoint'ine POST → LightGlue çalışır
+     → { passed, score } döner → frontend'e iletilir
+
+SERVIS ÇALIŞTIRMA:
+  Backend:  cd backend && npm run start:dev  (port 3000)
+  Matcher:  cd matcher && python -m uvicorn main:app --port 8001
+  Frontend: cd frontend && npm run dev (port 3001)
+
+--------------------------------------------------------------------------------
+FRONTEND EKRAN YAKALAMA SORUNU (AYRICA VAR, ORB/LOFTR'DAN BAĞIMSIZ)
+--------------------------------------------------------------------------------
+
+useMonitoring.ts checkPC() fonksiyonu:
+  stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  sv.play();
+  await new Promise(r => setTimeout(r, 400));  // ← YETERSİZ
+  canvas.getContext("2d").drawImage(sv, 0, 0);
+
+400ms bekleme keyfi. play() resolve olduğunda frame decode edilmiş olmayabilir.
+Sonuç: İlk frame'i veya stale frame'i yakalayabilir.
+
+DÜZELTME: requestVideoFrameCallback veya timeupdate event bekle:
+  await new Promise(r => {
+    if ('requestVideoFrameCallback' in sv) {
+      sv.requestVideoFrameCallback(r);
+    } else {
+      sv.ontimeupdate = r;
+    }
+  });
+
+Bu düzeltme henüz yapılmadı. Eğer matching çalışmaya başlarsa bu da
+test edilmeli.
+
+--------------------------------------------------------------------------------
+SON NOT
+--------------------------------------------------------------------------------
+
+Bu projede harcanan efor: ~40+ saat. Başarısız olan her yöntem makul
+bir sebepten başarısız oldu. "Cluttered Scene Sub-image Localization"
+gerçekten zor bir problem. Bunu hafife almak en büyük hataydı.
+
+Bir sonraki ajan için öneri: LoFTR dene, olmadı soruyu değiştir (YÖNTEM C).
+Soruyu değiştirmek en pragmatik çözüm olabilir.
+================================================================================

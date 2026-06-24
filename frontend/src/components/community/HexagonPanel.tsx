@@ -67,27 +67,7 @@ export default function HexagonPanel({
             "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
         }}
       >
-        {/* lofi girl arka plan — collapsed veya katılımcı yokken görünür */}
-        <AnimatePresence>
-          {(collapsed || participants.length === 0) && (
-            <motion.div
-              key="lofi"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0"
-            >
-              <Image
-                src="/images/lofi-girl.jpg"
-                alt="lofi girl"
-                fill
-                className="object-cover"
-                priority
-              />
-              <div className="absolute inset-0 bg-amber-900/30" />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* lofi girl arka plan kaldırıldı, sadece altıgen arka planı kalacak */}
 
         {/* Katılımcı grid — expanded ve katılımcı varsa */}
         <AnimatePresence>
@@ -228,7 +208,7 @@ export default function HexagonPanel({
               className="flex items-center gap-2 px-4 py-2 hover:bg-yellow-100 w-full text-left text-amber-800"
             >
               <Image
-                src="/images/spam.png"
+                src="/images/spam.svg"
                 alt="spam"
                 width={16}
                 height={16}

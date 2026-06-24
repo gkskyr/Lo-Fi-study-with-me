@@ -2,7 +2,13 @@
 
 @theme {
   --color-honey-light: #ffec8c;
-  --color-honey: #ffd000;
-  --color-honey-dark: #ffb700;
-  --color-honey-input: #fef9c3;
+  --color-honey: #fbbf24;
+  --color-honey-dark: #f59e0b;
+  --color-honey-input: #fef3c7;
+
+  /* Kahverengi amber tonlarını bal sarısına çek */
+  --color-amber-950: #5a4400;
+  --color-amber-900: #7a5c00;
+  --color-amber-800: #8f6d00;
+  --color-amber-700: #a07a00;
 }

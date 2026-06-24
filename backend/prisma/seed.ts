@@ -5,8 +5,8 @@ import { PrismaPg } from '@prisma/adapter-pg';
 const COMMUNITY_ROOMS = [
   { title: 'YKS', description: 'Yükseköğretim Kurumları Sınavı' },
   { title: 'KPSS', description: 'Kamu Personeli Seçme Sınavı' },
-  { title: 'ALES', description: 'Akademik Lisansüstü Eğitim Sınavı' },
   { title: 'DGS', description: 'Dikey Geçiş Sınavı' },
+  { title: 'Calculus 1&2', description: 'Calculus 1 ve 2' },
 ];
 
 async function main() {

@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Study Sessions — Test Client</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #1a0a00; color: #ffd000; padding: 24px; line-height: 1.6; }
+
+    h1 { color: #fb923c; font-size: 20px; margin-bottom: 4px; }
+    h2 { color: #fbbf24; font-size: 14px; margin: 28px 0 10px;
+         border-bottom: 1px solid #78350f; padding-bottom: 6px; }
+    h3 { color: #fb923c; font-size: 13px; margin-bottom: 8px; }
+
+    input, select {
+      background: #2c1a00; color: #ffd000; border: 1px solid #78350f;
+      padding: 6px 10px; border-radius: 6px; font-family: monospace; font-size: 13px;
+    }
+    input:focus, select:focus { outline: none; border-color: #ffd000; }
+    input[type="text"], input[type="password"], input[type="email"] { width: 100%; }
+    input[type="number"] { width: 80px; }
+
+    button {
+      background: #92400e; color: #ffd000; border: 1px solid #b45309;
+      padding: 7px 16px; border-radius: 6px; cursor: pointer;
+      font-family: monospace; font-size: 13px; transition: background 0.15s;
+    }
+    button:hover { background: #b45309; }
+    button.green { background: #14532d; border-color: #16a34a; color: #86efac; }
+    button.green:hover { background: #166534; }
+    button.red { background: #7f1d1d; border-color: #dc2626; color: #fca5a5; }
+
+    pre {
+      background: #0d0500; border: 1px solid #78350f; border-radius: 6px;
+      padding: 12px; white-space: pre-wrap; word-break: break-all;
+      max-height: 220px; overflow-y: auto; font-size: 12px; color: #a3e635;
+      margin-top: 8px;
+    }
+    pre.error { color: #f87171; }
+
+    .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+    .col { display: flex; flex-direction: column; gap: 4px; }
+    label { font-size: 11px; color: #fbbf24; }
+
+    .card {
+      background: #1f0d00; border: 1px solid #78350f; border-radius: 10px;
+      padding: 16px; margin-bottom: 12px;
+    }
+    .badge {
+      display: inline-block; background: #92400e; color: #ffd000;
+      border-radius: 4px; padding: 2px 8px; font-size: 11px; margin-left: 8px;
+    }
+    .session-bar {
+      background: #2c1a00; border: 1px solid #ffd000; border-radius: 8px;
+      padding: 10px 14px; margin: 14px 0; font-size: 13px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .session-bar span { color: #a3e635; font-weight: bold; }
+    .session-bar button { padding: 4px 10px; font-size: 11px; }
+
+    /* Tutorial */
+    .tutorial { background: #0d0500; border: 1px solid #78350f; border-radius: 10px; padding: 16px; margin-bottom: 24px; }
+    .tutorial h3 { color: #fb923c; margin-bottom: 10px; }
+    .step { display: flex; gap: 10px; margin-bottom: 8px; align-items: flex-start; }
+    .step-num {
+      background: #ffd000; color: #1c0a00; font-weight: bold; font-size: 11px;
+      border-radius: 50%; width: 20px; height: 20px; display: flex;
+      align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;
+    }
+    .step-text { font-size: 12px; color: #c89a40; }
+    .step-text code { color: #ffd000; background: #2c1a00; padding: 1px 5px; border-radius: 3px; }
+    .step-text strong { color: #fb923c; }
+
+    .divider { border: none; border-top: 1px solid #3c1a0a; margin: 6px 0; }
+  </style>
+</head>
+<body>
+
+<h1>🧪 Study Sessions — Test Client</h1>
+<p style="color:#78350f; font-size:12px; margin-bottom:20px;">koZan backend · <code id="base-display" style="color:#fbbf24;">http://localhost:3000</code></p>
+
+<!-- ══════════════ TUTORIAL ══════════════ -->
+<div class="tutorial">
+  <h3>📖 Nasıl Test Edilir — Adım Adım</h3>
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-text">
+      <strong>Giriş Yap</strong> — Aşağıdaki "Giriş Yap" bölümüne email ve şifrenizi girin, butona basın.
+      Token otomatik olarak alınır ve tüm isteklerde kullanılır.
+      <br>Alternatif: Frontend'e giriş yaptıysanız <strong>"localStorage'dan Al"</strong> butonuna bas — token oradan okunur.
+    </div>
+  </div>
+  <hr class="divider">
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-text">
+      <strong>Oturum Başlat</strong> — "Oturum Başlat" bölümünde topic, method ve monitoring tipini seç, butona bas.
+      Başarılıysa session ID otomatik kaydedilir (sarı çubukta görünür).
+    </div>
+  </div>
+  <hr class="divider">
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-text">
+      <strong>Tekrar Tamamla</strong> — <code>+1 Round</code> butonuna bas. Her basış <code>completedRounds</code> değerini 1 artırır.
+      Gerçek uygulamada bu, timer bir çalışma fazını bitirince otomatik çağrılır.
+    </div>
+  </div>
+  <hr class="divider">
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-text">
+      <strong>Check-in Gönder</strong> — Denetim simüle etmek için round numarası, passed (geçti/kaldı) ve tip seç, gönder.
+      Birkaç farklı kombinasyon dene — XP hesabını etkiler.
+    </div>
+  </div>
+  <hr class="divider">
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-text">
+      <strong>Oturumu Bitir</strong> — <code>⏹ Oturumu Bitir</code> butonuna bas.
+      Response içinde <code>xpResult</code> alanına bak: <code>baseXp = completedRounds × 10</code>, denetim bonusu ayrıca eklenir.
+    </div>
+  </div>
+  <hr class="divider">
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-text">
+      <strong>Geçmişi Kontrol Et</strong> — <code>📋 Geçmişi Getir</code> ile tüm oturumlarını listele. Son 20 oturum gelir.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ KONFİGÜRASYON ══════════════ -->
+<h2>⚙️ Bağlantı</h2>
+<div class="card">
+  <div class="row" style="margin-bottom:10px;">
+    <div class="col" style="flex:1;">
+      <label>Backend URL</label>
+      <input type="text" id="baseUrl" value="http://localhost:3000"
+             oninput="document.getElementById('base-display').textContent=this.value" />
+    </div>
+  </div>
+
+  <div style="display:flex; gap:8px; margin-bottom:10px; align-items:center;">
+    <button class="green" onclick="readFromLocalStorage()">🔑 localStorage'dan Al (frontend'e giriş yaptıysan)</button>
+    <span id="ls-status" style="font-size:11px; color:#78350f;"></span>
+  </div>
+
+  <hr class="divider" style="margin:10px 0;">
+  <p style="font-size:12px; color:#78350f; margin-bottom:8px;">veya buradan giriş yap:</p>
+
+  <div class="row" style="margin-bottom:8px;">
+    <div class="col" style="flex:1;"><label>Email</label><input type="email" id="login-email" placeholder="ornek@mail.com" /></div>
+    <div class="col" style="flex:1;"><label>Şifre</label><input type="password" id="login-pass" placeholder="••••••••" /></div>
+    <div class="col"><button onclick="doLogin()">Giriş Yap</button></div>
+  </div>
+  <pre id="r-login">—</pre>
+</div>
+
+<!-- Token göstergesi -->
+<div class="session-bar" id="token-bar" style="display:none;">
+  ✅ Token alındı &nbsp;·&nbsp; Kullanıcı: <span id="token-user">—</span>
+  <button class="red" onclick="clearToken()">Çıkış</button>
+</div>
+<div class="session-bar" id="session-bar" style="display:none;">
+  🟢 Aktif Session: <span id="active-session-id">—</span>
+  <button onclick="clearSession()">Temizle</button>
+</div>
+
+<!-- ══════════════ 1. OTURUM BAŞLAT ══════════════ -->
+<h2>1️⃣ POST /study-sessions <span class="badge">Oturum Başlat</span></h2>
+<div class="card">
+  <div class="row" style="margin-bottom:8px;">
+    <div class="col" style="flex:2;">
+      <label>topic</label>
+      <input type="text" id="s-topic" value="Matematik — Türev" style="width:100%" />
+    </div>
+    <div class="col" style="flex:1;">
+      <label>method</label>
+      <select id="s-method" style="width:100%" onchange="onMethodChange(this.value)">
+        <option>POMODORO</option>
+        <option>BASLAYAMIYORUM</option>
+        <option>KLASIK</option>
+        <option>RASTGELE</option>
+        <option>OZEL</option>
+      </select>
+    </div>
+  </div>
+  <div id="method-info" style="font-size:11px; color:#78350f; margin-bottom:8px; padding:6px 10px; background:#0d0500; border-radius:6px; border:1px solid #3c1a0a;">
+    25 dk çalışma · 5 dk mola · 5 tekrar
+  </div>
+  <div class="row" style="margin-bottom:8px;" id="custom-inputs" style="display:none">
+    <div class="col"><label>workMinutes</label><input type="number" id="s-work" value="25" /></div>
+    <div class="col"><label>breakMinutes</label><input type="number" id="s-break" value="5" /></div>
+    <div class="col"><label>totalRounds</label><input type="number" id="s-rounds" value="5" /></div>
+    <div class="col" style="flex:1;">
+      <label>monitoringType</label>
+      <select id="s-monitoring">
+        <option>NONE</option><option>PC</option><option>NOTEBOOK</option><option>BOTH</option>
+      </select>
+    </div>
+  </div>
+  <button onclick="createSession()">▶ Oturum Başlat</button>
+  <pre id="r-create">—</pre>
+</div>
+
+<!-- ══════════════ 2. TEKRAR ══════════════ -->
+<h2>2️⃣ PATCH /study-sessions/:id/round <span class="badge">Tekrar Tamamlandı</span></h2>
+<div class="card">
+  <p style="font-size:12px; color:#78350f; margin-bottom:8px;">Aktif session üzerinde çalışır. Her basışta completedRounds +1 olur.</p>
+  <button onclick="incrementRound()">+1 Round</button>
+  <pre id="r-round">—</pre>
+</div>
+
+<!-- ══════════════ 3. CHECK-IN ══════════════ -->
+<h2>3️⃣ POST /study-sessions/:id/checkin <span class="badge">Denetim Sonucu</span></h2>
+<div class="card">
+  <div class="row" style="margin-bottom:8px;">
+    <div class="col"><label>round</label><input type="number" id="ci-round" value="1" /></div>
+    <div class="col">
+      <label>passed</label>
+      <select id="ci-passed"><option value="true">true ✅</option><option value="false">false ❌</option></select>
+    </div>
+    <div class="col">
+      <label>monitoringType</label>
+      <select id="ci-type"><option>NOTEBOOK</option><option>PC</option><option>BOTH</option></select>
+    </div>
+  </div>
+  <button onclick="addCheckIn()">Denetim Gönder</button>
+  <pre id="r-checkin">—</pre>
+</div>
+
+<!-- ══════════════ 4. BİTİR ══════════════ -->
+<h2>4️⃣ PATCH /study-sessions/:id/end <span class="badge">Oturumu Bitir</span></h2>
+<div class="card">
+  <p style="font-size:12px; color:#78350f; margin-bottom:8px;">
+    XP hesaplanır ve kullanıcıya eklenir.
+    <br>Formül: <code style="color:#ffd000">baseXp = completedRounds×10</code> +
+    <code style="color:#ffd000">monitoringBonus = round(passed/total × completedRounds×5)</code>
+  </p>
+  <button onclick="endSession()">⏹ Oturumu Bitir</button>
+  <pre id="r-end">—</pre>
+</div>
+
+<!-- ══════════════ 5. GEÇMİŞ ══════════════ -->
+<h2>5️⃣ GET /study-sessions/me <span class="badge">Geçmiş</span></h2>
+<div class="card">
+  <button onclick="getMine()">📋 Son 20 Oturumu Getir</button>
+  <pre id="r-mine">—</pre>
+</div>
+
+<script>
+  const METHOD_PRESETS = {
+    POMODORO:       { work: 25, brk: 5,  rounds: 5, label: '25 dk çalışma · 5 dk mola · 5 tekrar' },
+    BASLAYAMIYORUM: { work: 10, brk: 5,  rounds: 5, label: '10 dk çalışma · 5 dk mola · 5 tekrar' },
+    KLASIK:         { work: 45, brk: 15, rounds: 5, label: '45 dk çalışma · 15 dk mola · 5 tekrar' },
+    RASTGELE:       { work: 25, brk: 10, rounds: 5, label: 'Rastgele süreler · 5 tekrar (10-45 dk / 5-15 dk)' },
+    OZEL:           { work: 25, brk: 5,  rounds: 5, label: 'Özel — aşağıdan düzenle' },
+  };
+
+  function onMethodChange(method) {
+    const preset = METHOD_PRESETS[method];
+    document.getElementById('method-info').textContent = preset.label;
+    const isCustom = method === 'OZEL';
+    document.getElementById('s-work').value   = preset.work;
+    document.getElementById('s-break').value  = preset.brk;
+    document.getElementById('s-rounds').value = preset.rounds;
+    document.getElementById('s-work').disabled   = !isCustom;
+    document.getElementById('s-break').disabled  = !isCustom;
+    document.getElementById('s-rounds').disabled = !isCustom;
+    // renk ipucu
+    const color = isCustom ? '#ffd000' : '#78350f';
+    ['s-work','s-break','s-rounds'].forEach(id =>
+      document.getElementById(id).style.borderColor = color
+    );
+  }
+
+  // ilk yükleme — POMODORO seçili gelsin
+  window.addEventListener('DOMContentLoaded', () => onMethodChange('POMODORO'));
+
+  let token = null;
+  let tokenUser = null;
+  let activeSessionId = null;
+
+  function getBase() { return document.getElementById('baseUrl').value.replace(/\/$/, ''); }
+  function headers() {
+    const h = { 'Content-Type': 'application/json' };
+    if (token) h['Authorization'] = `Bearer ${token}`;
+    return h;
+  }
+
+  function show(id, data, isError = false) {
+    const el = document.getElementById(id);
+    el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    el.className = isError ? 'error' : '';
+  }
+
+  function setToken(t, user) {
+    token = t;
+    tokenUser = user;
+    document.getElementById('token-bar').style.display = token ? 'flex' : 'none';
+    document.getElementById('token-user').textContent = user || '—';
+  }
+
+  function clearToken() { setToken(null, null); }
+
+  function setSession(id) {
+    activeSessionId = id;
+    document.getElementById('session-bar').style.display = id ? 'flex' : 'none';
+    document.getElementById('active-session-id').textContent = id || '—';
+  }
+
+  function clearSession() { setSession(null); }
+
+  function readFromLocalStorage() {
+    try {
+      const raw = localStorage.getItem('kozan-auth');
+      if (!raw) { document.getElementById('ls-status').textContent = '❌ localStorage boş — önce frontend\'e giriş yap'; return; }
+      const parsed = JSON.parse(raw);
+      const t = parsed?.state?.accessToken;
+      const u = parsed?.state?.username;
+      if (!t) { document.getElementById('ls-status').textContent = '❌ Token bulunamadı'; return; }
+      setToken(t, u);
+      document.getElementById('ls-status').textContent = `✅ ${u} olarak alındı`;
+    } catch (e) {
+      document.getElementById('ls-status').textContent = '❌ Parse hatası: ' + e.message;
+    }
+  }
+
+  async function doLogin() {
+    const email = document.getElementById('login-email').value;
+    const pass  = document.getElementById('login-pass').value;
+    if (!email || !pass) { show('r-login', '⚠ Email ve şifre gerekli', true); return; }
+    try {
+      const res = await fetch(`${getBase()}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass }),
+      });
+      const data = await res.json();
+      if (!res.ok) { show('r-login', data, true); return; }
+      setToken(data.access_token, data.username);
+      show('r-login', { message: `✅ Giriş başarılı — ${data.username}`, access_token: data.access_token.slice(0, 40) + '...' });
+    } catch (e) {
+      show('r-login', `❌ Bağlantı hatası: ${e.message}\n\nBackend çalışıyor mu? → cd backend && npm run start:dev`, true);
+    }
+  }
+
+  async function createSession() {
+    if (!token) { show('r-create', '⚠ Önce giriş yap', true); return; }
+    const method = document.getElementById('s-method').value;
+    const preset = METHOD_PRESETS[method];
+    const workMinutes  = method === 'RASTGELE'
+      ? Math.floor(Math.random() * 36) + 10   // 10-45
+      : +document.getElementById('s-work').value;
+    const breakMinutes = method === 'RASTGELE'
+      ? Math.floor(Math.random() * 11) + 5    // 5-15
+      : +document.getElementById('s-break').value;
+    const body = {
+      topic:          document.getElementById('s-topic').value,
+      method,
+      workMinutes,
+      breakMinutes,
+      totalRounds:   +document.getElementById('s-rounds').value,
+      monitoringType: document.getElementById('s-monitoring').value,
+    };
+    try {
+      const res = await fetch(`${getBase()}/study-sessions`, {
+        method: 'POST', headers: headers(), body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      show('r-create', data, !res.ok);
+      if (res.ok && data.id) setSession(data.id);
+    } catch (e) { show('r-create', `❌ ${e.message}`, true); }
+  }
+
+  async function incrementRound() {
+    if (!activeSessionId) { show('r-round', '⚠ Aktif session yok — önce oturum başlat', true); return; }
+    try {
+      const res = await fetch(`${getBase()}/study-sessions/${activeSessionId}/round`, {
+        method: 'PATCH', headers: headers(),
+      });
+      show('r-round', await res.json(), !res.ok);
+    } catch (e) { show('r-round', `❌ ${e.message}`, true); }
+  }
+
+  async function addCheckIn() {
+    if (!activeSessionId) { show('r-checkin', '⚠ Aktif session yok', true); return; }
+    const body = {
+      round:          +document.getElementById('ci-round').value,
+      passed:          document.getElementById('ci-passed').value === 'true',
+      monitoringType:  document.getElementById('ci-type').value,
+    };
+    try {
+      const res = await fetch(`${getBase()}/study-sessions/${activeSessionId}/checkin`, {
+        method: 'POST', headers: headers(), body: JSON.stringify(body),
+      });
+      show('r-checkin', await res.json(), !res.ok);
+    } catch (e) { show('r-checkin', `❌ ${e.message}`, true); }
+  }
+
+  async function endSession() {
+    if (!activeSessionId) { show('r-end', '⚠ Aktif session yok', true); return; }
+    try {
+      const res = await fetch(`${getBase()}/study-sessions/${activeSessionId}/end`, {
+        method: 'PATCH', headers: headers(),
+      });
+      const data = await res.json();
+      show('r-end', data, !res.ok);
+      if (res.ok) setSession(null);
+    } catch (e) { show('r-end', `❌ ${e.message}`, true); }
+  }
+
+  async function getMine() {
+    if (!token) { show('r-mine', '⚠ Önce giriş yap', true); return; }
+    try {
+      const res = await fetch(`${getBase()}/study-sessions/me`, { headers: headers() });
+      show('r-mine', await res.json(), !res.ok);
+    } catch (e) { show('r-mine', `❌ ${e.message}`, true); }
+  }
+</script>
+</body>
+</html>

@@ -35,7 +35,7 @@ export class RoomsController {
   @Get(':id/agora-token')
   @UseGuards(JwtAuthGuard)
   async getAgoraToken(@Param('id') id: string, @CurrentUser() user: User) {
-    await this.roomsService.findOne(id, user.id);
-    return this.agoraService.generateRtcToken(id, user.id);
+    const room = await this.roomsService.findOne(id, user.id);
+    return this.agoraService.generateRtcToken(room.id, user.id);
   }
 }

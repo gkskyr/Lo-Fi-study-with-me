@@ -13,6 +13,9 @@ async function bootstrap() {
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
   app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
 
+  // Geliştirme test client'ı — http://localhost:<PORT>/test/study-sessions.html
+  app.useStaticAssets(join(process.cwd(), 'test-client'), { prefix: '/test' });
+
   app.enableCors();
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false }));
 

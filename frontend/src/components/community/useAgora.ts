@@ -4,9 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type {
   IAgoraRTCClient,
   ILocalVideoTrack,
-  ILocalAudioTrack,
   IRemoteVideoTrack,
-  IRemoteAudioTrack,
   IAgoraRTCRemoteUser,
 } from "agora-rtc-sdk-ng";
 import { api } from "@/lib/api";
@@ -14,9 +12,7 @@ import { api } from "@/lib/api";
 export interface RemoteUser {
   uid: number;
   videoTrack: IRemoteVideoTrack | null;
-  audioTrack: IRemoteAudioTrack | null;
   hasVideo: boolean;
-  hasAudio: boolean;
 }
 
 interface UseAgoraResult {
@@ -25,9 +21,7 @@ interface UseAgoraResult {
   localVideoRef: React.RefObject<HTMLDivElement | null>;
   remoteUsers: RemoteUser[];
   cameraOn: boolean;
-  micOn: boolean;
   toggleCamera: () => Promise<void>;
-  toggleMic: () => Promise<void>;
   leave: () => Promise<void>;
 }
 
@@ -38,14 +32,12 @@ export function useAgora(
 ): UseAgoraResult {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localVideoTrackRef = useRef<ILocalVideoTrack | null>(null);
-  const localAudioTrackRef = useRef<ILocalAudioTrack | null>(null);
   const localVideoRef = useRef<HTMLDivElement | null>(null);
 
   const [joined, setJoined] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [remoteUsers, setRemoteUsers] = useState<RemoteUser[]>([]);
   const [cameraOn, setCameraOn] = useState(false);
-  const [micOn, setMicOn] = useState(false);
 
   useEffect(() => {
     if (!active || !accessToken) return;
@@ -68,56 +60,29 @@ export function useAgora(
         clientRef.current = client;
 
         client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
-          await client.subscribe(user, mediaType);
-
-          if (mediaType === "video") {
-            const videoTrack = user.videoTrack ?? null;
-            setRemoteUsers((prev) => {
-              const exists = prev.find((r) => r.uid === (user.uid as number));
-              if (exists) {
-                return prev.map((r) =>
-                  r.uid === (user.uid as number)
-                    ? { ...r, videoTrack, hasVideo: true }
-                    : r
-                );
-              }
-              return [...prev, { uid: user.uid as number, videoTrack, audioTrack: null, hasVideo: true, hasAudio: false }];
-            });
-            setTimeout(() => {
-              const el = document.getElementById(`agora-remote-${user.uid}`);
-              if (el && videoTrack) videoTrack.play(el);
-            }, 100);
-          }
-
-          if (mediaType === "audio") {
-            const audioTrack = user.audioTrack ?? null;
-            setRemoteUsers((prev) => {
-              const exists = prev.find((r) => r.uid === (user.uid as number));
-              if (exists) {
-                return prev.map((r) =>
-                  r.uid === (user.uid as number)
-                    ? { ...r, audioTrack, hasAudio: true }
-                    : r
-                );
-              }
-              return [...prev, { uid: user.uid as number, videoTrack: null, audioTrack, hasVideo: false, hasAudio: true }];
-            });
-            audioTrack?.play();
-          }
+          if (mediaType !== "video") return;
+          await client.subscribe(user, "video");
+          const videoTrack = user.videoTrack ?? null;
+          setRemoteUsers((prev) => {
+            const exists = prev.find((r) => r.uid === (user.uid as number));
+            if (exists) {
+              return prev.map((r) =>
+                r.uid === (user.uid as number) ? { ...r, videoTrack, hasVideo: true } : r
+              );
+            }
+            return [...prev, { uid: user.uid as number, videoTrack, hasVideo: true }];
+          });
+          setTimeout(() => {
+            const el = document.getElementById(`agora-remote-${user.uid}`);
+            if (el && videoTrack) videoTrack.play(el);
+          }, 100);
         });
 
         client.on("user-unpublished", (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
+          if (mediaType !== "video") return;
           setRemoteUsers((prev) =>
             prev.map((r) =>
-              r.uid === (user.uid as number)
-                ? {
-                    ...r,
-                    videoTrack: mediaType === "video" ? null : r.videoTrack,
-                    audioTrack: mediaType === "audio" ? null : r.audioTrack,
-                    hasVideo: mediaType === "video" ? false : r.hasVideo,
-                    hasAudio: mediaType === "audio" ? false : r.hasAudio,
-                  }
-                : r
+              r.uid === (user.uid as number) ? { ...r, videoTrack: null, hasVideo: false } : r
             )
           );
         });
@@ -155,11 +120,6 @@ export function useAgora(
       localVideoTrackRef.current?.stop();
       localVideoTrackRef.current?.close();
       localVideoTrackRef.current = null;
-
-      localAudioTrackRef.current?.stop();
-      localAudioTrackRef.current?.close();
-      localAudioTrackRef.current = null;
-
       await clientRef.current?.leave();
       clientRef.current = null;
     } catch (e) {
@@ -168,7 +128,6 @@ export function useAgora(
     setJoined(false);
     setRemoteUsers([]);
     setCameraOn(false);
-    setMicOn(false);
   }
 
   const toggleCamera = useCallback(async () => {
@@ -194,28 +153,6 @@ export function useAgora(
     }
   }, [cameraOn]);
 
-  const toggleMic = useCallback(async () => {
-    try {
-      const AgoraRTC = (await import("agora-rtc-sdk-ng")).default;
-      const client = clientRef.current;
-
-      if (micOn && localAudioTrackRef.current) {
-        if (client) await client.unpublish(localAudioTrackRef.current).catch(() => {});
-        localAudioTrackRef.current.stop();
-        localAudioTrackRef.current.close();
-        localAudioTrackRef.current = null;
-        setMicOn(false);
-      } else {
-        const track = await AgoraRTC.createMicrophoneAudioTrack();
-        localAudioTrackRef.current = track;
-        if (client) await client.publish(track).catch(() => {});
-        setMicOn(true);
-      }
-    } catch (err) {
-      console.error("Mikrofon toggle hatası:", err);
-    }
-  }, [micOn]);
-
   const leave = useCallback(async () => {
     await cleanup();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -227,9 +164,7 @@ export function useAgora(
     localVideoRef,
     remoteUsers,
     cameraOn,
-    micOn,
     toggleCamera,
-    toggleMic,
     leave,
   };
 }

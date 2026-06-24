@@ -4,6 +4,8 @@ import { RoomsGateway } from '../rooms/rooms.gateway';
 import { XpService, XP_REWARDS } from '../xp/xp.service';
 import { CreateQuestionDto } from './dto/create-question.dto';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class QuestionsService {
   constructor(
@@ -31,7 +33,7 @@ export class QuestionsService {
         },
       },
       include: {
-        author: { select: { id: true, name: true } },
+        author: { select: { id: true, name: true, username: true } },
         media: true,
         _count: { select: { answers: true } },
       },
@@ -47,13 +49,15 @@ export class QuestionsService {
   }
 
   async findByRoom(roomId: string) {
-    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+    const room = UUID_RE.test(roomId)
+      ? await this.prisma.room.findUnique({ where: { id: roomId } })
+      : await this.prisma.room.findUnique({ where: { slug: roomId } });
     if (!room) throw new NotFoundException('Oda bulunamadı.');
 
     return this.prisma.question.findMany({
       where: { roomId },
       include: {
-        author: { select: { id: true, name: true } },
+        author: { select: { id: true, name: true, username: true } },
         media: true,
         _count: { select: { answers: true } },
       },
@@ -118,7 +122,7 @@ export class QuestionsService {
         },
       },
       include: {
-        author: { select: { id: true, name: true } },
+        author: { select: { id: true, name: true, username: true } },
         media: true,
       },
     });
@@ -139,7 +143,7 @@ export class QuestionsService {
     return this.prisma.answer.findMany({
       where: { questionId },
       include: {
-        author: { select: { id: true, name: true } },
+        author: { select: { id: true, name: true, username: true } },
         media: true,
       },
       orderBy: { createdAt: 'asc' },

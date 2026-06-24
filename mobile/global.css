@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+@theme {
+  --color-honey: #fbbf24;
+  --color-honey-dark: #f59e0b;
+  --color-kozan-bg: #ffec8c;
+  --color-kozan-card: #fef3c7;
+}

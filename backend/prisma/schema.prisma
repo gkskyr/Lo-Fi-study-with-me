@@ -24,6 +24,8 @@ model User {
   answers                 Answer[]
   noteUnits               NoteUnit[]
   refreshTokens           RefreshToken[]
+  studySessions           StudySession[]
+  monitoringRef           MonitoringRef?
 
   @@index([email])
   @@index([username])
@@ -49,6 +51,7 @@ enum Role {
 model Room {
   id        String     @id @default(uuid())
   title     String
+  slug      String?    @unique
   type      RoomType
   ownerId   String?
   owner     User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
@@ -121,6 +124,62 @@ model AnswerMedia {
 enum RoomType {
   PERSONAL
   COMMUNITY
+}
+
+enum StudyMethod {
+  POMODORO
+  BASLAYAMIYORUM
+  KLASIK
+  RASTGELE
+  OZEL
+}
+
+enum MonitoringType {
+  NONE
+  PC
+  NOTEBOOK
+  BOTH
+}
+
+model StudySession {
+  id              String           @id @default(uuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic           String
+  method          StudyMethod
+  workMinutes     Int
+  breakMinutes    Int
+  totalRounds     Int
+  completedRounds Int              @default(0)
+  monitoringType  MonitoringType   @default(NONE)
+  startedAt       DateTime         @default(now())
+  endedAt         DateTime?
+  xpAwarded       Int              @default(0)
+  checkIns        SessionCheckIn[]
+
+  @@index([userId])
+}
+
+model SessionCheckIn {
+  id             String         @id @default(uuid())
+  sessionId      String
+  session        StudySession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  round          Int
+  passed         Boolean
+  monitoringType MonitoringType
+  checkedAt      DateTime       @default(now())
+
+  @@index([sessionId])
+}
+
+model MonitoringRef {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refImage  Bytes
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 // ── Not Defteri Hiyerarşisi: NoteUnit > NoteTopic > Note ────────────────────
