@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <title>koZan — Test Client</title>
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
+  <script src="https://cdn.socket.io/4.8.3/socket.io.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; padding: 24px; }
@@ -45,6 +47,20 @@
     .base-row { max-width: 900px; margin-bottom: 16px; display: flex; gap: 8px; align-items: center; }
     .base-row span { color: #aaa; font-size: 12px; white-space: nowrap; }
     .base-row input { margin: 0; }
+    .full { grid-column: 1 / -1; }
+    .cam-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .cam-row input { margin: 0; flex: 1; }
+    .cam-row button { width: auto; padding: 8px 18px; }
+    .cam-row button.leave { background: #6a2d2d; }
+    .cam-row button.leave:hover { background: #8a3d3d; }
+    .cam-row button:disabled { background: #333; color: #666; cursor: default; }
+    #videos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .video-box { position: relative; width: 280px; height: 210px; background: #000;
+                 border-radius: 6px; overflow: hidden; border: 1px solid #2a2a2a; flex-shrink: 0; }
+    .video-box video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .video-label { position: absolute; bottom: 6px; left: 8px; font-size: 11px;
+                   color: #fff; background: rgba(0,0,0,.55); padding: 2px 6px; border-radius: 3px; }
+    .cam-status { font-size: 12px; color: #aaa; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -62,7 +78,40 @@
   <button class="clear-btn" onclick="clearToken()">Temizle</button>
 </div>
 
+<div id="xp-bar" style="max-width:900px;margin-bottom:16px;background:#1a1a1a;border:1px solid #2a2a2a;
+     border-radius:8px;padding:10px 16px;display:none;align-items:center;gap:16px;flex-wrap:wrap">
+  <span style="font-size:12px;color:#aaa">XP Durumu:</span>
+  <div style="flex:1;min-width:180px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+      <span id="xp-role" style="font-size:12px;font-weight:bold;color:#7c6af7">—</span>
+      <span id="xp-val" style="font-size:12px;color:#e0e0e0">0 XP</span>
+    </div>
+    <div style="background:#111;border-radius:4px;height:6px;overflow:hidden">
+      <div id="xp-bar-fill" style="height:100%;background:linear-gradient(90deg,#7c6af7,#a78bfa);
+           width:0%;transition:width 0.4s ease;border-radius:4px"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:2px">
+      <span style="font-size:10px;color:#333">0</span>
+      <span id="xp-next-label" style="font-size:10px;color:#333">500 XP → EXPERIENCED</span>
+    </div>
+  </div>
+  <button onclick="xpRefresh()" style="width:auto;padding:4px 12px;font-size:11px;background:#222">Yenile</button>
+</div>
+
 <div class="grid">
+
+  <!-- CAMERA TEST -->
+  <div class="card full">
+    <h2>Kamera Testi — Agora RTC (WebRTC)</h2>
+    <div class="cam-row">
+      <input id="cam-room-id" placeholder="Oda ID (listeden kopyala)" />
+      <input id="cam-app-id" placeholder="Agora App ID" value="65b1effe89dc470991629c1a87f2c591" style="max-width:280px" />
+      <button id="cam-join-btn" onclick="joinCamera()">Kameraya Katıl</button>
+      <button id="cam-leave-btn" class="leave" onclick="leaveCamera()" disabled>Ayrıl</button>
+    </div>
+    <div id="videos"></div>
+    <div class="cam-status" id="cam-status">—</div>
+  </div>
 
   <!-- REGISTER -->
   <div class="card">
@@ -91,6 +140,139 @@
     <input id="log-password" placeholder="password" value="Test1234!" type="password" />
     <button onclick="login()">Giriş Yap</button>
     <div class="response" id="log-res">—</div>
+  </div>
+
+  <!-- MY PERSONAL ROOM -->
+  <div class="card">
+    <h2>Kişisel Odam</h2>
+    <p style="font-size:12px;color:#555;margin-bottom:8px">Kayıt sırasında otomatik oluşturulur. Token gerekli.</p>
+    <button onclick="getMyRoom()">Odam'ı Getir</button>
+    <div class="response" id="my-room-res">—</div>
+  </div>
+
+  <!-- LIST ROOMS -->
+  <div class="card">
+    <h2>GET /rooms — Odaları Listele</h2>
+    <p style="font-size:12px;color:#555;margin-bottom:8px">Token varsa kendi PERSONAL odaların da gelir.</p>
+    <button onclick="listRooms()">Listele</button>
+    <div class="response" id="room-list-res">—</div>
+  </div>
+
+  <!-- GET ROOM -->
+  <div class="card">
+    <h2>GET /rooms/:id — Oda Detayı</h2>
+    <input id="room-id" placeholder="Oda ID (listeden kopyala)" />
+    <button onclick="getRoom()">Getir</button>
+    <div class="response" id="room-get-res">—</div>
+  </div>
+
+  <!-- AGORA TOKEN -->
+  <div class="card">
+    <h2>GET /rooms/:id/agora-token — RTC Token Al (JWT zorunlu)</h2>
+    <input id="agora-room-id" placeholder="Oda ID (listeden kopyala)" />
+    <button onclick="getAgoraToken()">Token Al</button>
+    <div class="response" id="agora-res">—</div>
+  </div>
+
+  <!-- Q&A PANEL -->
+  <div class="card full">
+    <h2>Q&amp;A — Soru / Upvote Paneli + Gerçek Zamanlı (Socket.io)</h2>
+    <div class="cam-row" style="align-items:flex-start;flex-wrap:wrap;gap:6px">
+      <input id="qa-room-id" placeholder="Oda ID" style="flex:1;min-width:180px" />
+      <button onclick="qaConnect()" id="qa-connect-btn" style="width:auto;padding:8px 14px;background:#2d4a2d">Socket Bağlan</button>
+      <button onclick="qaDisconnect()" id="qa-disconnect-btn" style="width:auto;padding:8px 14px;background:#4a2d2d" disabled>Bağlantıyı Kes</button>
+      <button onclick="qaLoad()" style="width:auto;padding:8px 14px">Soruları Yükle</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+      <textarea id="qa-content" placeholder="Soru metni (opsiyonel — sadece resim de gönderebilirsin)..."
+        style="flex:1;min-width:200px;height:52px;background:#111;border:1px solid #333;color:#e0e0e0;
+               border-radius:4px;font-family:monospace;font-size:12px;padding:8px;resize:none"></textarea>
+      <div style="display:flex;flex-direction:column;gap:4px;justify-content:center">
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
+          <input type="file" id="qa-ask-files" multiple accept="image/*" style="display:none" onchange="qaAskFilePreview()" />
+          <span style="background:#222;border:1px solid #444;border-radius:4px;padding:5px 10px;font-size:11px;color:#aaa;white-space:nowrap">Resim Ekle</span>
+        </label>
+        <div id="qa-ask-file-preview" style="font-size:10px;color:#7c6af7;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      </div>
+      <button onclick="qaAsk()" style="width:auto;padding:8px 16px;align-self:stretch">Sor</button>
+    </div>
+    <div id="qa-list" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>
+
+    <!-- Cevap paneli — bir soruya "Cevapla" tıklanınca açılır -->
+    <div id="qa-answer-section" style="margin-top:10px;display:none;border-top:1px solid #2a2a2a;padding-top:10px">
+      <div style="font-size:11px;color:#7c6af7;margin-bottom:6px">
+        Cevap veriliyor → <span id="qa-answer-qid-label" style="color:#aaa"></span>
+        <input type="hidden" id="qa-answer-qid" />
+      </div>
+      <div style="display:flex;gap:6px">
+        <textarea id="qa-answer-content" placeholder="Cevap metni (opsiyonel — sadece resim de gönderebilirsin)..."
+          style="flex:1;height:52px;background:#111;border:1px solid #333;color:#e0e0e0;
+                 border-radius:4px;font-family:monospace;font-size:12px;padding:8px;resize:none"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <label style="cursor:pointer">
+          <input type="file" id="qa-answer-files" multiple accept="image/*" style="display:none" onchange="qaFilePreview()" />
+          <span style="background:#222;border:1px solid #444;border-radius:4px;padding:5px 10px;font-size:12px;color:#aaa">Resim Ekle (maks 5×5MB)</span>
+        </label>
+        <div id="qa-file-preview" style="flex:1;font-size:11px;color:#7c6af7"></div>
+        <button onclick="qaAnswerSubmit()" style="width:auto;padding:8px 16px">Gönder</button>
+        <button onclick="qaAnswerClose()" style="width:auto;padding:8px 10px;background:#333;font-size:11px">✕</button>
+      </div>
+      <div id="qa-answers-list" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+    </div>
+
+    <div style="margin-top:8px">
+      <div style="font-size:11px;color:#555;margin-bottom:4px">Socket Event Log</div>
+      <div id="qa-log" style="background:#080808;border:1px solid #1a1a1a;border-radius:4px;
+           padding:8px;height:80px;overflow-y:auto;font-size:11px;color:#666;font-family:monospace"></div>
+    </div>
+    <div class="cam-status" id="qa-status">—</div>
+  </div>
+
+  <!-- NOTEPAD PANEL -->
+  <div class="card full">
+    <h2>Not Defteri — NoteUnit &gt; NoteTopic &gt; Note (JWT zorunlu)</h2>
+    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+
+      <!-- Sol: Ağaç görünümü -->
+      <div style="min-width:240px;flex:0 0 240px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:12px;color:#aaa">Üniteler</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span id="note-counter" style="font-size:11px;color:#555">—/10 not</span>
+            <button onclick="notesLoad()" style="width:auto;padding:3px 10px;font-size:11px;background:#222">Yenile</button>
+            <button onclick="noteAddUnit()" style="width:auto;padding:3px 10px;font-size:11px">+ Ünite</button>
+          </div>
+        </div>
+        <div id="note-tree" style="display:flex;flex-direction:column;gap:4px;max-height:420px;overflow-y:auto"></div>
+        <div id="note-tree-status" style="font-size:11px;color:#555;margin-top:6px">—</div>
+      </div>
+
+      <!-- Sağ: Not editörü -->
+      <div style="flex:1;min-width:240px">
+        <div id="note-editor-placeholder" style="font-size:12px;color:#333;padding:20px 0">
+          ← Bir not seç veya oluştur
+        </div>
+        <div id="note-editor" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:11px;color:#555">Başlık:</span>
+            <span id="note-editor-autosave-status" style="font-size:10px;color:#555"></span>
+          </div>
+          <input id="note-editor-title" placeholder="Not başlığı" oninput="noteEditorChanged()"
+            style="margin-bottom:8px;font-size:14px;font-weight:bold;background:#111;border:1px solid #333;color:#e0e0e0;border-radius:4px;padding:8px;width:100%;font-family:monospace" />
+          <textarea id="note-editor-content" placeholder="Not içeriği (düz metin olarak gösterilir, Tiptap JSON olarak kaydedilir)..."
+            oninput="noteEditorChanged()"
+            style="width:100%;height:220px;background:#111;border:1px solid #333;color:#e0e0e0;
+                   border-radius:4px;font-family:monospace;font-size:13px;padding:10px;resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button onclick="noteEditorSave()" style="width:auto;padding:6px 16px;font-size:12px">Kaydet</button>
+            <button onclick="noteEditorDelete()" style="width:auto;padding:6px 12px;font-size:12px;background:#4a2020">Notu Sil</button>
+          </div>
+          <div id="note-editor-info" style="font-size:10px;color:#333;margin-top:6px"></div>
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <!-- PROTECTED TEST -->
@@ -126,6 +308,8 @@
   function setToken(t) {
     token = t;
     document.getElementById('tokenDisplay').textContent = t || '—';
+    if (t) xpRefresh();
+    else document.getElementById('xp-bar').style.display = 'none';
   }
 
   function clearToken() {
@@ -146,6 +330,39 @@
     let json;
     try { json = JSON.parse(text); } catch { json = text; }
     return { ok: res.ok, status: res.status, data: json };
+  }
+
+  async function getMyRoom() {
+    try {
+      const r = await apiFetch('/rooms/mine');
+      if (!r.ok) { show('my-room-res', r.data, true); return; }
+      show('my-room-res', { status: r.status, ...r.data }, false);
+      document.getElementById('room-id').value = r.data.id;
+      document.getElementById('cam-room-id').value = r.data.id;
+      document.getElementById('qa-room-id').value = r.data.id;
+      document.getElementById('agora-room-id').value = r.data.id;
+    } catch (e) {
+      show('my-room-res', 'Bağlantı hatası: ' + e.message, true);
+    }
+  }
+
+  async function listRooms() {
+    try {
+      const r = await apiFetch('/rooms');
+      show('room-list-res', { status: r.status, count: Array.isArray(r.data) ? r.data.length : '?', rooms: r.data }, !r.ok);
+    } catch (e) {
+      show('room-list-res', 'Bağlantı hatası: ' + e.message, true);
+    }
+  }
+
+  async function getRoom() {
+    try {
+      const id = document.getElementById('room-id').value.trim();
+      const r = await apiFetch(`/rooms/${id}`);
+      show('room-get-res', { status: r.status, ...r.data }, !r.ok);
+    } catch (e) {
+      show('room-get-res', 'Bağlantı hatası: ' + e.message, true);
+    }
   }
 
   async function verifyEmail() {
@@ -175,7 +392,12 @@
         }),
       });
       show('reg-res', { status: r.status, ...r.data }, !r.ok);
-      if (r.ok && r.data.access_token) setToken(r.data.access_token);
+      if (r.ok) {
+        // Kayıt başarılıysa email'i doğrulama formuna otomatik taşı
+        const email = document.getElementById('reg-email').value;
+        document.getElementById('ver-email').value = email;
+        document.getElementById('log-email').value = email;
+      }
     } catch (e) {
       show('reg-res', 'Bağlantı hatası: ' + e.message, true);
     }
@@ -197,6 +419,16 @@
     }
   }
 
+  async function getAgoraToken() {
+    try {
+      const id = document.getElementById('agora-room-id').value.trim();
+      const r = await apiFetch(`/rooms/${id}/agora-token`);
+      show('agora-res', { status: r.status, ...r.data }, !r.ok);
+    } catch (e) {
+      show('agora-res', 'Bağlantı hatası: ' + e.message, true);
+    }
+  }
+
   async function getMe() {
     try {
       const r = await apiFetch('/auth/me');
@@ -205,6 +437,567 @@
       show('me-res', 'Bağlantı hatası: ' + e.message, true);
     }
   }
+
+  // ── Q&A ─────────────────────────────────────────────────────────────────────
+  let qaSocket = null;
+  let qaQuestions = [];
+  const qaVotedSet = new Set(); // session içinde oy verilen soru ID'leri
+
+  function qaStatus(msg) { document.getElementById('qa-status').textContent = msg; }
+
+  function qaLog(msg, color = '#666') {
+    const el = document.getElementById('qa-log');
+    const ts = new Date().toLocaleTimeString('tr-TR');
+    el.innerHTML += `<div style="color:${color}">[${ts}] ${escHtml(msg)}</div>`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function qaConnect() {
+    const roomId = document.getElementById('qa-room-id').value.trim();
+    if (!roomId) { qaStatus('Oda ID gerekli.'); return; }
+    if (qaSocket) { qaSocket.disconnect(); }
+
+    qaSocket = io(base(), {
+      transports: ['websocket'],
+      auth: token ? { token: 'Bearer ' + token } : {},
+    });
+
+    qaSocket.on('connect', () => {
+      qaLog('Bağlandı: ' + qaSocket.id, '#4ade80');
+      qaSocket.emit('room:join', roomId);
+    });
+    qaSocket.on('room:joined', (data) => {
+      qaLog('Odaya katıldın: ' + data.roomId, '#7c6af7');
+      qaStatus('Socket bağlı — oda: ' + data.roomId);
+      document.getElementById('qa-connect-btn').disabled = true;
+      document.getElementById('qa-disconnect-btn').disabled = false;
+      qaLoad();
+    });
+    qaSocket.on('question:new', (q) => {
+      qaLog('Yeni soru: ' + q.content.slice(0, 50), '#facc15');
+      if (!qaQuestions.find(x => x.id === q.id)) qaQuestions.unshift(q);
+      qaSort(); qaRenderList(qaQuestions);
+    });
+    qaSocket.on('vote:updated', (data) => {
+      const voteTxt = data.voted ? '▲ oy verildi' : '▼ oy geri çekildi';
+      qaLog(`${voteTxt} — ${data.upvotes} oy (${data.id.slice(0,8)}…)`, '#38bdf8');
+      const q = qaQuestions.find(x => x.id === data.id);
+      if (q) { q.upvotes = data.upvotes; qaSort(); qaRenderList(qaQuestions); }
+    });
+    qaSocket.on('xp:updated', (data) => {
+      const icon = data.leveledUp ? '🎉' : '⭐';
+      const msg = data.leveledUp
+        ? `${icon} ROL YÜKSELDİ → ${data.newRole} | XP: ${data.xp}`
+        : `${icon} +XP → Toplam: ${data.xp} | Rol: ${data.role}`;
+      qaLog(msg, data.leveledUp ? '#facc15' : '#7c6af7');
+      xpUpdateDisplay(data);
+    });
+    qaSocket.on('answer:new', (a) => {
+      const preview = a.content ? a.content.slice(0, 40) : `[${a.media?.length ?? 0} resim]`;
+      qaLog('Yeni cevap: ' + preview + ' — ' + escHtml(a.author?.name ?? '?'), '#a78bfa');
+      const activeQid = document.getElementById('qa-answer-qid').value;
+      if (activeQid === a.questionId) qaAnswerLoad(a.questionId);
+    });
+    qaSocket.on('disconnect', () => {
+      qaLog('Bağlantı kesildi.', '#f87171');
+      qaStatus('Socket bağlantısı kesildi.');
+      document.getElementById('qa-connect-btn').disabled = false;
+      document.getElementById('qa-disconnect-btn').disabled = true;
+    });
+    qaSocket.on('connect_error', (e) => { qaLog('Bağlantı hatası: ' + e.message, '#f87171'); });
+  }
+
+  function qaDisconnect() { if (qaSocket) { qaSocket.disconnect(); qaSocket = null; } }
+
+  function qaSort() {
+    qaQuestions.sort((a, b) => b.upvotes - a.upvotes || new Date(a.createdAt) - new Date(b.createdAt));
+  }
+
+  function qaRenderList(questions) {
+    const el = document.getElementById('qa-list');
+    if (!questions.length) { el.innerHTML = '<div style="color:#555;font-size:12px">Henüz soru yok.</div>'; return; }
+    el.innerHTML = questions.map((q, i) => {
+      const voted = qaVotedSet.has(q.id);
+      const voteColor = voted ? '#4ade80' : '#888';
+      const voteBg   = voted ? '#1e3a1e' : '#1a1a1a';
+      const voteBorder = voted ? '#2d6a3f' : '#333';
+      const ansCount = q._count?.answers ?? 0;
+      return `
+      <div style="background:#111;border:1px solid #2a2a2a;border-radius:5px;padding:10px;display:flex;gap:10px;align-items:flex-start">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:48px">
+          <button onclick="qaVote('${q.id}')"
+            style="width:48px;padding:4px 0;background:${voteBg};border:1px solid ${voteBorder};
+                   border-radius:4px;color:${voteColor};font-size:11px;cursor:pointer">
+            ${voted ? '▲ Geri' : '▲ Oy'}
+          </button>
+          <span style="font-size:18px;font-weight:bold;color:${q.upvotes > 0 ? '#4ade80' : '#555'}">${q.upvotes}</span>
+        </div>
+        <div style="flex:1;overflow:hidden">
+          ${q.content ? `<div style="font-size:13px;color:#e0e0e0;word-break:break-word;margin-bottom:4px">${escHtml(q.content)}</div>` : ''}
+          ${(q.media ?? []).length > 0 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">
+            ${q.media.map(m => `<img src="${base()}${m.url}" style="max-height:80px;max-width:120px;border-radius:3px;cursor:pointer" onclick="window.open('${base()}${m.url}')" />`).join('')}
+          </div>` : ''}
+          <div style="font-size:11px;color:#555;margin-top:2px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <span style="color:#7c6af7">${escHtml(q.author?.name ?? '?')}</span>
+            <span>${new Date(q.createdAt).toLocaleTimeString('tr-TR')}</span>
+            <button onclick="qaAnswerOpen('${q.id}', '${escHtml(q.content).slice(0,30)}...')"
+              style="background:#1a1a2e;border:1px solid #3a3a6a;border-radius:3px;color:#a78bfa;
+                     font-size:11px;padding:2px 8px;cursor:pointer">
+              💬 Cevapla ${ansCount > 0 ? '(' + ansCount + ')' : ''}
+            </button>
+            <span style="color:#333;user-select:all;font-size:10px">${q.id}</span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#333;min-width:20px;text-align:right">#${i+1}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function escHtml(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  async function qaLoad() {
+    const roomId = document.getElementById('qa-room-id').value.trim();
+    if (!roomId) { qaStatus('Oda ID gerekli.'); return; }
+    const r = await apiFetch(`/rooms/${roomId}/questions`);
+    if (!r.ok) { qaStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    qaQuestions = r.data;
+    qaSort(); qaRenderList(qaQuestions);
+    qaStatus(`${r.data.length} soru — ${new Date().toLocaleTimeString('tr-TR')}`);
+  }
+
+  function qaAskFilePreview() {
+    const files = document.getElementById('qa-ask-files').files;
+    document.getElementById('qa-ask-file-preview').textContent =
+      files.length ? files.length + ' resim' : '';
+  }
+
+  async function qaAsk() {
+    const roomId  = document.getElementById('qa-room-id').value.trim();
+    const content = document.getElementById('qa-content').value.trim();
+    const files   = document.getElementById('qa-ask-files').files;
+    if (!roomId) { qaStatus('Oda ID gerekli.'); return; }
+    if (!token)  { qaStatus('Önce giriş yap.'); return; }
+    if (!content && files.length === 0) { qaStatus('Metin veya resim gerekli.'); return; }
+
+    const fd = new FormData();
+    fd.append('roomId', roomId);
+    if (content) fd.append('content', content);
+    for (const f of files) fd.append('files', f);
+
+    const res = await fetch(base() + '/questions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: fd,
+    });
+    const text = await res.text();
+    let data; try { data = JSON.parse(text); } catch { data = text; }
+
+    if (res.ok) {
+      document.getElementById('qa-content').value = '';
+      document.getElementById('qa-ask-files').value = '';
+      document.getElementById('qa-ask-file-preview').textContent = '';
+      qaStatus('Soru eklendi.');
+      if (!qaSocket) await qaLoad();
+    } else {
+      qaStatus('Hata: ' + JSON.stringify(data));
+    }
+  }
+
+  async function qaVote(questionId) {
+    if (!token) { qaStatus('Oy vermek için giriş yap.'); return; }
+    const r = await apiFetch(`/questions/${questionId}/vote`, { method: 'POST' });
+    if (!r.ok) { qaStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    // Toggle lokal set
+    if (r.data.voted) qaVotedSet.add(questionId); else qaVotedSet.delete(questionId);
+    const q = qaQuestions.find(x => x.id === questionId);
+    if (q) { q.upvotes = r.data.upvotes; qaSort(); qaRenderList(qaQuestions); }
+    if (!qaSocket) qaStatus(`${r.data.voted ? '▲ Oy verildi' : '▼ Oy geri çekildi'} — ${r.data.upvotes} oy`);
+  }
+
+  // ── Cevap paneli ────────────────────────────────────────────────────────────
+  function qaAnswerOpen(qid, label) {
+    document.getElementById('qa-answer-qid').value = qid;
+    document.getElementById('qa-answer-qid-label').textContent = label;
+    document.getElementById('qa-answer-section').style.display = 'block';
+    document.getElementById('qa-answer-content').value = '';
+    document.getElementById('qa-answer-files').value = '';
+    document.getElementById('qa-file-preview').textContent = '';
+    qaAnswerLoad(qid);
+    document.getElementById('qa-answer-section').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function qaAnswerClose() {
+    document.getElementById('qa-answer-section').style.display = 'none';
+    document.getElementById('qa-answers-list').innerHTML = '';
+  }
+
+  function qaFilePreview() {
+    const files = document.getElementById('qa-answer-files').files;
+    document.getElementById('qa-file-preview').textContent =
+      files.length ? Array.from(files).map(f => f.name).join(', ') : '';
+  }
+
+  async function qaAnswerLoad(qid) {
+    const r = await apiFetch(`/questions/${qid}/answers`);
+    if (!r.ok) return;
+    const el = document.getElementById('qa-answers-list');
+    if (!r.data.length) { el.innerHTML = '<div style="color:#555;font-size:11px">Henüz cevap yok.</div>'; return; }
+    el.innerHTML = r.data.map(a => `
+      <div style="background:#0d0d1a;border:1px solid #2a2a4a;border-radius:4px;padding:8px;margin-top:4px">
+        <div style="font-size:11px;color:#a78bfa;margin-bottom:4px">
+          ${escHtml(a.author?.name ?? '?')} · ${new Date(a.createdAt).toLocaleTimeString('tr-TR')}
+        </div>
+        ${a.content ? `<div style="font-size:12px;color:#e0e0e0;margin-bottom:6px">${escHtml(a.content)}</div>` : ''}
+        ${(a.media ?? []).map(m => `
+          <img src="${base()}${m.url}" alt="cevap resmi"
+               style="max-width:200px;max-height:160px;border-radius:4px;margin-right:4px;cursor:pointer"
+               onclick="window.open('${base()}${m.url}')" />`).join('')}
+      </div>`).join('');
+  }
+
+  async function qaAnswerSubmit() {
+    const qid     = document.getElementById('qa-answer-qid').value;
+    const content = document.getElementById('qa-answer-content').value.trim();
+    const files   = document.getElementById('qa-answer-files').files;
+    if (!token) { qaStatus('Önce giriş yap.'); return; }
+    if (!qid)   { qaStatus('Soru ID bulunamadı.'); return; }
+
+    const fd = new FormData();
+    if (content) fd.append('content', content);
+    for (const f of files) fd.append('files', f);
+
+    const res = await fetch(base() + `/questions/${qid}/answers`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: fd,
+    });
+    const text = await res.text();
+    let data; try { data = JSON.parse(text); } catch { data = text; }
+
+    if (res.ok) {
+      qaStatus('Cevap gönderildi.');
+      document.getElementById('qa-answer-content').value = '';
+      document.getElementById('qa-answer-files').value = '';
+      document.getElementById('qa-file-preview').textContent = '';
+      if (!qaSocket) qaAnswerLoad(qid); // socket yoksa HTTP ile yükle
+    } else {
+      qaStatus('Hata: ' + JSON.stringify(data));
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // ── Agora Kamera Testi ──────────────────────────────────────────────────────
+  let agoraClient = null;
+  let localVideoTrack = null;
+  let localAudioTrack = null;
+  const remoteUsers = {};
+
+  function camStatus(msg) {
+    document.getElementById('cam-status').textContent = msg;
+  }
+
+  function addVideoBox(uid, track, label) {
+    const box = document.createElement('div');
+    box.className = 'video-box';
+    box.id = 'video-' + uid;
+    const lbl = document.createElement('div');
+    lbl.className = 'video-label';
+    lbl.textContent = label;
+    box.appendChild(lbl);
+    document.getElementById('videos').appendChild(box);
+    track.play('video-' + uid);
+  }
+
+  function removeVideoBox(uid) {
+    const el = document.getElementById('video-' + uid);
+    if (el) el.remove();
+  }
+
+  async function joinCamera() {
+    const roomId = document.getElementById('cam-room-id').value.trim();
+    const appId  = document.getElementById('cam-app-id').value.trim();
+    if (!roomId || !appId) { camStatus('Oda ID ve App ID gerekli.'); return; }
+    if (!token)  { camStatus('Önce giriş yap — JWT token gerekli.'); return; }
+
+    camStatus('Token alınıyor...');
+    const r = await apiFetch(`/rooms/${roomId}/agora-token`);
+    if (!r.ok) { camStatus('Token hatası: ' + JSON.stringify(r.data)); return; }
+
+    const { token: rtcToken, uid, channelName } = r.data;
+    camStatus('Kanala bağlanılıyor...');
+
+    agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+
+    agoraClient.on('user-published', async (user, mediaType) => {
+      await agoraClient.subscribe(user, mediaType);
+      if (mediaType === 'video') {
+        remoteUsers[user.uid] = user;
+        addVideoBox(user.uid, user.videoTrack, 'Uzak: ' + user.uid);
+      }
+    });
+
+    agoraClient.on('user-unpublished', (user, mediaType) => {
+      if (mediaType === 'video') {
+        delete remoteUsers[user.uid];
+        removeVideoBox(user.uid);
+      }
+    });
+
+    agoraClient.on('user-left', (user) => {
+      delete remoteUsers[user.uid];
+      removeVideoBox(user.uid);
+    });
+
+    try {
+      await agoraClient.join(appId, channelName, rtcToken, uid);
+      localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+      localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+      await agoraClient.publish([localVideoTrack, localAudioTrack]);
+      addVideoBox('local', localVideoTrack, 'Sen (uid: ' + uid + ')');
+      document.getElementById('cam-join-btn').disabled = true;
+      document.getElementById('cam-leave-btn').disabled = false;
+      camStatus('Yayında — kanal: ' + channelName + ' | uid: ' + uid);
+    } catch (e) {
+      camStatus('Hata: ' + e.message);
+    }
+  }
+
+  async function leaveCamera() {
+    if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); }
+    if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); }
+    if (agoraClient)     await agoraClient.leave();
+    agoraClient = localVideoTrack = localAudioTrack = null;
+    document.getElementById('videos').innerHTML = '';
+    document.getElementById('cam-join-btn').disabled = false;
+    document.getElementById('cam-leave-btn').disabled = true;
+    camStatus('Kanaldan ayrıldın.');
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // ── XP Durumu ────────────────────────────────────────────────────────────────
+  const XP_TIERS = [
+    { role: 'BEGINNER',    next: 500,  nextRole: 'EXPERIENCED' },
+    { role: 'EXPERIENCED', next: 2000, nextRole: 'INSTRUCTOR'  },
+    { role: 'INSTRUCTOR',  next: null, nextRole: null          },
+  ];
+
+  function xpUpdateDisplay({ xp, role }) {
+    const bar = document.getElementById('xp-bar');
+    bar.style.display = 'flex';
+    document.getElementById('xp-role').textContent = role;
+    document.getElementById('xp-val').textContent = xp + ' XP';
+
+    const tier = XP_TIERS.find(t => t.role === role) ?? XP_TIERS[0];
+    if (tier.next) {
+      const pct = Math.min(100, Math.round((xp / tier.next) * 100));
+      document.getElementById('xp-bar-fill').style.width = pct + '%';
+      document.getElementById('xp-next-label').textContent = tier.next + ' XP → ' + tier.nextRole;
+    } else {
+      document.getElementById('xp-bar-fill').style.width = '100%';
+      document.getElementById('xp-next-label').textContent = 'Maksimum rol';
+    }
+  }
+
+  async function xpRefresh() {
+    if (!token) return;
+    const r = await apiFetch('/auth/me');
+    if (r.ok) xpUpdateDisplay(r.data);
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // ── Not Defteri ─────────────────────────────────────────────────────────────
+  let noteTree = [];
+  let noteCurrentId = null;
+  let noteAutosaveTimer = null;
+  let noteEditorDirty = false;
+
+  function noteStatus(msg) { document.getElementById('note-tree-status').textContent = msg; }
+
+  function noteTiptapToText(content) {
+    try {
+      const doc = typeof content === 'string' ? JSON.parse(content) : content;
+      if (!doc || !doc.content) return '';
+      return doc.content.map(node => {
+        if (!node.content) return '';
+        return node.content.map(c => c.text ?? '').join('');
+      }).join('\n');
+    } catch { return ''; }
+  }
+
+  function noteTextToTiptap(text) {
+    const paragraphs = text.split('\n').map(line => ({
+      type: 'paragraph',
+      content: line ? [{ type: 'text', text: line }] : undefined,
+    }));
+    return { type: 'doc', content: paragraphs.length ? paragraphs : [{ type: 'paragraph' }] };
+  }
+
+  function noteTotalCount() {
+    let n = 0;
+    for (const unit of noteTree) for (const topic of (unit.topics ?? [])) n += (topic.notes ?? []).length;
+    return n;
+  }
+
+  async function notesLoad() {
+    if (!token) { noteStatus('Önce giriş yap.'); return; }
+    const r = await apiFetch('/notes');
+    if (!r.ok) { noteStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    noteTree = r.data;
+    noteRenderTree();
+    const total = noteTotalCount();
+    document.getElementById('note-counter').textContent = `${total}/10 not`;
+    noteStatus(noteTree.length ? `${noteTree.length} ünite` : 'Henüz ünite yok. + Ünite ile başla.');
+  }
+
+  function noteRenderTree() {
+    const el = document.getElementById('note-tree');
+    if (!noteTree.length) { el.innerHTML = '<div style="color:#333;font-size:12px">—</div>'; return; }
+    el.innerHTML = noteTree.map(unit => `
+      <div style="border:1px solid #2a2a2a;border-radius:5px;overflow:hidden">
+        <div style="background:#1e1e1e;padding:7px 10px;display:flex;justify-content:space-between;align-items:center;gap:4px">
+          <span style="font-size:12px;color:#c0b0ff;font-weight:bold;flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+            onclick="noteToggleUnit('${unit.id}')" title="${escHtml(unit.title)}">📁 ${escHtml(unit.title)}</span>
+          <button onclick="noteAddTopic('${unit.id}')" title="Konu ekle"
+            style="width:auto;padding:2px 7px;font-size:10px;background:#282838;border:1px solid #3a3a5a">+Konu</button>
+          <button onclick="noteDeleteUnit('${unit.id}')" title="Üniteyi sil"
+            style="width:auto;padding:2px 7px;font-size:10px;background:#3a1a1a;border:1px solid #5a2a2a">✕</button>
+        </div>
+        <div id="unit-body-${unit.id}" style="display:block">
+          ${(unit.topics ?? []).map(topic => `
+            <div style="background:#141414;border-top:1px solid #222;padding:6px 10px 6px 20px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:4px">
+                <span style="font-size:11px;color:#a0a0c0;font-weight:bold;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${escHtml(topic.title)}">📂 ${escHtml(topic.title)}</span>
+                <button onclick="noteAddNote('${topic.id}')" title="Not ekle"
+                  style="width:auto;padding:1px 6px;font-size:10px;background:#1a2a1a;border:1px solid #2a4a2a">+Not</button>
+                <button onclick="noteDeleteTopic('${topic.id}')" title="Konuyu sil"
+                  style="width:auto;padding:1px 6px;font-size:10px;background:#3a1a1a;border:1px solid #5a2a2a">✕</button>
+              </div>
+              ${(topic.notes ?? []).map(note => `
+                <div onclick="noteOpen('${note.id}')"
+                  style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin-bottom:2px;
+                         border-radius:3px;cursor:pointer;font-size:11px;
+                         background:${noteCurrentId === note.id ? '#1e2a3a' : '#0d0d0d'};
+                         border:1px solid ${noteCurrentId === note.id ? '#3a5a8a' : '#1a1a1a'}">
+                  <span style="color:${noteCurrentId === note.id ? '#7cb8ff' : '#888'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">
+                    📄 ${escHtml(note.title)}
+                  </span>
+                  <span style="font-size:10px;color:#333;white-space:nowrap;margin-left:6px">
+                    ${new Date(note.updatedAt).toLocaleDateString('tr-TR', {day:'2-digit',month:'2-digit'})}
+                  </span>
+                </div>`).join('')}
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+  }
+
+  function noteToggleUnit(unitId) {
+    const el = document.getElementById(`unit-body-${unitId}`);
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
+
+  async function noteAddUnit() {
+    if (!token) { noteStatus('Önce giriş yap.'); return; }
+    const title = prompt('Ünite adı:');
+    if (!title?.trim()) return;
+    const r = await apiFetch('/notes/units', { method: 'POST', body: JSON.stringify({ title: title.trim() }) });
+    if (!r.ok) { noteStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    await notesLoad();
+  }
+
+  async function noteDeleteUnit(unitId) {
+    if (!confirm('Üniteyi ve içindeki tüm konuları/notları sil?')) return;
+    const r = await apiFetch(`/notes/units/${unitId}`, { method: 'DELETE' });
+    if (r.status !== 204 && !r.ok) { noteStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    if (noteCurrentId) { const unit = noteTree.find(u => u.id === unitId); if (unit?.topics?.some(t => t.notes?.some(n => n.id === noteCurrentId))) noteEditorClose(); }
+    await notesLoad();
+  }
+
+  async function noteAddTopic(unitId) {
+    if (!token) { noteStatus('Önce giriş yap.'); return; }
+    const title = prompt('Konu adı:');
+    if (!title?.trim()) return;
+    const r = await apiFetch(`/notes/units/${unitId}/topics`, { method: 'POST', body: JSON.stringify({ title: title.trim() }) });
+    if (!r.ok) { noteStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    await notesLoad();
+  }
+
+  async function noteDeleteTopic(topicId) {
+    if (!confirm('Konuyu ve içindeki notları sil?')) return;
+    const r = await apiFetch(`/notes/topics/${topicId}`, { method: 'DELETE' });
+    if (r.status !== 204 && !r.ok) { noteStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    await notesLoad();
+  }
+
+  async function noteAddNote(topicId) {
+    if (!token) { noteStatus('Önce giriş yap.'); return; }
+    if (noteTotalCount() >= 10) { noteStatus('Not limiti doldu (maks 10 not).'); return; }
+    const title = prompt('Not başlığı:');
+    if (!title?.trim()) return;
+    const r = await apiFetch(`/notes/topics/${topicId}/notes`, { method: 'POST', body: JSON.stringify({ title: title.trim() }) });
+    if (!r.ok) { noteStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    await notesLoad();
+    await noteOpen(r.data.id);
+  }
+
+  async function noteOpen(noteId) {
+    noteCurrentId = noteId;
+    const r = await apiFetch(`/notes/${noteId}`);
+    if (!r.ok) { noteStatus('Not açılamadı: ' + JSON.stringify(r.data)); return; }
+    document.getElementById('note-editor-placeholder').style.display = 'none';
+    document.getElementById('note-editor').style.display = 'block';
+    document.getElementById('note-editor-title').value = r.data.title;
+    document.getElementById('note-editor-content').value = noteTiptapToText(r.data.content);
+    document.getElementById('note-editor-info').textContent =
+      `ID: ${r.data.id}  |  Güncellendi: ${new Date(r.data.updatedAt).toLocaleString('tr-TR')}`;
+    document.getElementById('note-editor-autosave-status').textContent = '';
+    noteEditorDirty = false;
+    noteRenderTree(); // seçili notu highlight et
+  }
+
+  function noteEditorClose() {
+    noteCurrentId = null;
+    document.getElementById('note-editor-placeholder').style.display = 'block';
+    document.getElementById('note-editor').style.display = 'none';
+  }
+
+  function noteEditorChanged() {
+    noteEditorDirty = true;
+    document.getElementById('note-editor-autosave-status').textContent = '● kaydedilmedi';
+    clearTimeout(noteAutosaveTimer);
+    noteAutosaveTimer = setTimeout(noteEditorSave, 2000); // 2s debounce
+  }
+
+  async function noteEditorSave() {
+    clearTimeout(noteAutosaveTimer);
+    if (!noteCurrentId) return;
+    const title = document.getElementById('note-editor-title').value.trim();
+    const text  = document.getElementById('note-editor-content').value;
+    const body = {};
+    if (title) body.title = title;
+    body.content = noteTextToTiptap(text);
+    document.getElementById('note-editor-autosave-status').textContent = '⏳ kaydediliyor...';
+    const r = await apiFetch(`/notes/${noteCurrentId}`, { method: 'PATCH', body: JSON.stringify(body) });
+    if (!r.ok) {
+      document.getElementById('note-editor-autosave-status').textContent = '✗ kayıt hatası';
+      return;
+    }
+    document.getElementById('note-editor-autosave-status').textContent = `✓ kaydedildi — ${new Date(r.data.updatedAt).toLocaleTimeString('tr-TR')}`;
+    noteEditorDirty = false;
+    await notesLoad();
+    noteRenderTree();
+  }
+
+  async function noteEditorDelete() {
+    if (!noteCurrentId || !confirm('Bu notu sil?')) return;
+    const r = await apiFetch(`/notes/${noteCurrentId}`, { method: 'DELETE' });
+    if (r.status !== 204 && !r.ok) { noteStatus('Hata: ' + JSON.stringify(r.data)); return; }
+    noteEditorClose();
+    await notesLoad();
+  }
+  // ────────────────────────────────────────────────────────────────────────────
 
   async function rawRequest() {
     try {

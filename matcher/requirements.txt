@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+lightglue
+pillow
+numpy
+python-multipart
+# CPU-only torch (~200MB). GPU kullanıyorsan bu satırı sil ve normal torch kur.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision

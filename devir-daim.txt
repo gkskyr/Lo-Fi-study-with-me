@@ -1,0 +1,399 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        KOZAN PROJESİ — DEVİR-DAİM BELGESİ                  ║
+║                 Yazan: Ayrılan Claude Mühendisi | Tarih: 2026-06-10          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 1 — PROJE MİMARİSİ VE GENEL BAKIŞ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+koZan: Öğrencilere yönelik bir çalışma platformu. İki temel modu var:
+  • Topluluk Odaları  → birden fazla kullanıcının sesli katıldığı ortak çalışma odaları
+  • Kişisel Oda       → tekli, denetim destekli pomodoro/timer çalışma oturumları
+
+Teknik yığın:
+  Backend  → NestJS (Node.js), port 3001
+  Frontend → Next.js 15 (App Router), port 3000
+  Veritabanı → PostgreSQL + Prisma ORM
+  Önbellek/Varlık → Redis (Socket.IO için gerekli)
+  Gerçek zamanlı → Socket.IO (WebSocket gateway)
+  Ses/Video → Agora RTC (topluluk odaları için)
+  Auth → JWT (access + refresh token), e-posta doğrulama
+  State → Zustand (frontend)
+  Depolama (denetim) → IndexedDB (tarayıcıda, sunucuya gönderilmiyor)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 2 — KLASÖR YAPISI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+koZan/
+├── backend/
+│   ├── prisma/
+│   │   ├── schema.prisma         ← Tüm veritabanı modelleri burada
+│   │   └── seed.ts               ← Başlangıç verisi
+│   └── src/
+│       ├── main.ts               ← Port 3001, CORS açık (localhost:3000)
+│       ├── app.module.ts         ← Tüm modülleri bağlayan kök modül
+│       ├── auth/                 ← Kayıt, giriş, e-posta doğrulama, JWT
+│       │   ├── auth.controller.ts
+│       │   ├── auth.service.ts
+│       │   ├── strategies/jwt.strategy.ts
+│       │   ├── guards/           ← JwtAuthGuard, JwtOptionalAuthGuard
+│       │   └── dto/              ← register, login, verify-email, refresh
+│       ├── users/users.service.ts ← Kullanıcı sorgulama + XP/rol okuma
+│       ├── rooms/
+│       │   ├── rooms.controller.ts ← GET /rooms, POST /rooms, Agora token
+│       │   ├── rooms.gateway.ts    ← Socket.IO: join/leave/message
+│       │   └── rooms.service.ts
+│       ├── questions/            ← Oda içi soru-cevap (medya yükleme dahil)
+│       ├── notes/                ← NoteUnit > NoteTopic > Note hiyerarşisi
+│       ├── study-sessions/       ← Kişisel oda oturumları (TAMAMLANDI)
+│       │   ├── study-sessions.controller.ts
+│       │   ├── study-sessions.service.ts
+│       │   └── dto/
+│       │       ├── create-session.dto.ts
+│       │       └── checkin.dto.ts
+│       ├── xp/xp.service.ts      ← XP ekle, rol güncelle (BEGINNER/EXPERIENCED/INSTRUCTOR)
+│       ├── mail/                 ← Bull kuyruğu ile e-posta gönderimi
+│       ├── redis/presence.service.ts ← Oda aktif kullanıcı sayımı
+│       └── prisma/prisma.service.ts  ← Prisma singleton
+
+└── frontend/
+    └── src/
+        ├── app/
+        │   ├── page.tsx                  ← Ana giriş/kayıt sayfası
+        │   ├── logout/page.tsx           ← Token temizle ve yönlendir
+        │   ├── community/
+        │   │   ├── page.tsx              ← Oda listesi
+        │   │   └── [roomId]/page.tsx     ← Oda içi görünüm
+        │   ├── personal-room/page.tsx    ← Kişisel oda akışı (5 aşama)
+        │   └── denetim/page.tsx          ← Denetim algoritması test sayfası (geliştirici aracı)
+        ├── components/
+        │   ├── login/                    ← AuthForm, BeehiveButton, Logo, NavButtons
+        │   ├── community/
+        │   │   ├── RoomView.tsx          ← Ana topluluk odası bileşeni
+        │   │   ├── useAgora.ts           ← Agora RTC hook'u
+        │   │   ├── useRoomSocket.ts      ← Socket.IO hook'u
+        │   │   ├── QASection.tsx + QuestionCard.tsx
+        │   │   └── HexagonPanel.tsx      ← Kullanıcı listesi
+        │   └── personal-room/
+        │       ├── SetupWizard.tsx        ← 3 adımlı oturum kurulum sihirbazı
+        │       ├── CalibrationView.tsx    ← Oturum öncesi denetim kalibrasyonu
+        │       ├── StudySessionView.tsx   ← Aktif oturum (timer + kamera + modal)
+        │       ├── CheckInModal.tsx       ← Tur sonu denetim popup'ı
+        │       ├── SessionSummary.tsx     ← Oturum sonu özet ve XP animasyonu
+        │       ├── useStudyTimer.ts       ← Timer mantığı (work/break/done fazları)
+        │       ├── useMonitoring.ts       ← Denetim hook'u (IndexedDB + kamera + PC)
+        │       └── useTeachableMachine.ts ← KULLANILMIYOR, eski TF.js kodu — silinebilir
+        ├── lib/
+        │   ├── api.ts                    ← Tüm backend API çağrıları (fetch wrapper)
+        │   └── monitoring.ts             ← Saf canvas algoritmaları (TF.js yok)
+        └── store/
+            └── authStore.ts              ← Zustand: username, accessToken, isLoggedIn
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 3 — KİŞİSEL ODA AKIŞI (SAYFA DURUMLARI)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/personal-room/page.tsx şu durumları sırayla yönetir:
+
+  setup       → SetupWizard (konu, yöntem, denetim tipi seç)
+      ↓ createStudySession() backend çağrısı
+  starting    → Spinner
+      ↓ monitoringType !== "NONE" ise
+  calibrating → CalibrationView (kamera ve/veya PC referansını IDB'ye kaydet)
+      ↓ onDone()
+  session     → StudySessionView (timer + kamera canlı görüntü + check-in modal)
+      ↓ api.endStudySession() → xpResult döner
+  summary     → SessionSummary (istatistikler + XP animasyonu)
+
+userId nasıl belirlenir:
+  accessToken'ın son 16 karakteri → IndexedDB anahtarı olarak kullanılır.
+  Auth store'da userId alanı YOK. Direkt veritabanı UUID'si bilinmiyor frontend'den.
+  Kod: const userId = accessToken ? accessToken.slice(-16) : "guest"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 4 — DENETİM SİSTEMİ (MEVCUT DURUM)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Denetim iki farklı yöntemle çalışır:
+
+── KAMERA DENETİMİ (NOTEBOOK modu) ──────────────────────────────────────────
+
+Kalibrasyon:
+  Kullanıcı kamerayı açar. Ekranda yeşil bir bounding box gösterilir
+  (top:25%, left:25%, width:50%, height:50%). Kullanıcı defterini/kitabını
+  bu kutunun içine koyar ve "Kaydet" der. O anki görüntünün bu bölgesi
+  32x32 piksel gri tonlama matrisine (thumbprint) indirgenerek IndexedDB'ye
+  kaydedilir.
+
+Check-in:
+  Tur bittiğinde CheckInModal açılır. Kullanıcı "Hazırım" der, 3 saniyelik
+  geri sayım başlar. Süre dolunca aynı yeşil kutu bölgesinin anlık görüntüsü
+  alınır, yeni thumbprint hesaplanır, referansla MAD (Mean Absolute Difference)
+  karşılaştırması yapılır. Benzerlik > 0.65 → geçti.
+
+Algoritma: 32x32 MAD
+  - Her piksel gri tona çevrilir (0.299*R + 0.587*G + 0.114*B)
+  - İki 1024 elemanlı dizinin her elemanının mutlak farkı ortalaması
+  - similarity = 1 - (ortalama_fark / 255)
+  - Aynı obje aynı pozisyonda → ~0.85-0.95
+  - Tamamen farklı sahne → ~0.40-0.60
+  - Eşik: 0.65
+
+── PC DENETİMİ (PC modu) ────────────────────────────────────────────────────
+
+Kalibrasyon:
+  Kullanıcı çalışma materyalinin görselini (PNG/JPG) dosya olarak yükler.
+  Bu görsel dHash algoritmasıyla 256 bitlik boolean diziye dönüştürülür
+  ve IndexedDB'ye kaydedilir.
+
+Check-in:
+  getDisplayMedia() ile ekran paylaşımı istenir. Kullanıcı ekranı seçer.
+  400ms beklendikten sonra tam ekran görüntüsü alınır, dHash hesaplanır,
+  referans dHash ile karşılaştırılır. Benzerlik > 0.72 → geçti.
+
+Algoritma: 256-bit dHash (gradient hash)
+  - Görsel 17x16 piksel boyutuna küçültülür
+  - Her satırda soldan sağa komşu piksel parlaklıkları karşılaştırılır
+    (sol < sağ ise true, değilse false)
+  - 16 satır × 16 karşılaştırma = 256 bit
+  - Tamamen farklı iki görsel → ~%50 benzerlik (rastgele coin flip gibi)
+  - Aynı içerik → >%85 benzerlik
+  - Eşik: 0.72
+
+IndexedDB yapısı:
+  Veritabanı adı: "kozan-monitoring"
+  Object store: "calibration"
+  Anahtar: "mon-{userId}" (userId = accessToken'ın son 16 karakteri)
+  Değer: { cam?: number[], pc?: boolean[] }
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 5 — BACKEND API REFERANSI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Auth:
+  POST /auth/register        { email, username, name, password }
+  POST /auth/verify-email    { email, code }
+  POST /auth/login           { email, password }
+  POST /auth/refresh         { refresh_token }
+
+Odalar:
+  GET  /rooms                → Room[]
+  GET  /rooms/:id            → Room
+  GET  /rooms/:id/agora-token (JWT gerekli) → { token, uid, channelName }
+
+Sorular:
+  GET  /rooms/:roomId/questions → Question[]
+  POST /questions              (multipart/form-data: roomId, content, files[])
+  POST /questions/:id/vote
+  GET  /questions/:id/answers
+  POST /questions/:id/answers  (multipart/form-data: content, files[])
+
+Çalışma Oturumları (JWT zorunlu):
+  POST   /study-sessions           → StudySession oluştur
+  PATCH  /study-sessions/:id/round → completedRounds++ yap
+  POST   /study-sessions/:id/checkin → { round, passed, monitoringType }
+  PATCH  /study-sessions/:id/end   → XP hesapla, oturumu kapat
+  GET    /study-sessions/me        → Kullanıcının son 20 oturumu
+
+XP/Rol sistemi:
+  BEGINNER    → 0-499 XP
+  EXPERIENCED → 500-1999 XP
+  INSTRUCTOR  → 2000+ XP
+  Oturum XP formülü: (completedRounds * 10) + monitoringBonus
+  monitoringBonus = round((passedCheckIns / totalCheckIns) * completedRounds * 5)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 6 — ÇALIŞMA YÖNTEMLERİ (StudyMethod enum)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  POMODORO       → 25dk çalış, 5dk mola, 5 tekrar
+  BASLAYAMIYORUM → 10dk çalış, 5dk mola, 5 tekrar
+  KLASIK         → 45dk çalış, 15dk mola, 5 tekrar
+  RASTGELE       → randomBetween(10,45) çalış, randomBetween(5,15) mola, 5 tekrar
+  OZEL           → kullanıcı kendi değerlerini girer
+
+RASTGELE modunda süreler her tur farklı seçilir ama oturum başlangıcında belirlenir.
+useStudyTimer.ts içinde randomBetween() fonksiyonu kullanılır.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 7 — FRONTEND AUTH STATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Zustand store'u localStorage'da "kozan-auth" anahtarıyla saklanır.
+İçinde SADECE şunlar var: username, accessToken, isLoggedIn
+"user" veya "userId" ALANI YOK.
+
+Eğer backend userId'ye ihtiyaç duyarsa: JWT token decode edilmeli ya da
+ayrı bir /me endpoint'i eklenmelidir. Şu an frontend bunu yapmıyor.
+
+Denetim modülü userId'yi accessToken.slice(-16) olarak türetiyor (IDB anahtarı için).
+Bu gerçek bir UUID değil, sadece cihaz bazlı IndexedDB izolasyonu için yeterli.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 8 — BİLİNEN EKSİKLER VE YAPILMAYANLAR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. DENETİM TEST EDİLMEDİ
+   Algoritma kodu tamamlandı, TypeScript hataları yok, build geçiyor.
+   Ancak gerçek tarayıcıda çalıştırılıp test edilmedi. /denetim sayfası
+   bunun için yapılmıştı ama sonuçları görülmedi.
+
+2. checkInsPassed / checkInsTotal ÖZET EKRANINDA SIFIR
+   SessionSummary'ye bu veriler geçirilmiyor (her zaman 0/0 gösteriyor).
+   Backend /end endpoint'i checkIns verisini döndürüyor (includes: {checkIns: true})
+   ama frontend bunu parse etmiyor. Küçük bir değişiklikle düzeltilebilir.
+
+3. useTeachableMachine.ts ÖLMÜŞ KOD
+   TF.js tabanlı eski yaklaşım. Kullanılmıyor. Silinebilir.
+
+
+4. getDisplayMedia SAFARI'DE ÇALIŞMAZ
+   PC denetimi sadece Chrome ve Edge'de destekleniyor. SetupWizard'da
+   pcSupported kontrolü var ama hata mesajı yok.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 9 — SUNUCUYU ÇALIŞTIRMA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Backend:
+  cd backend
+  npm run start:dev   (port 3001)
+
+Frontend:
+  cd frontend
+  npm run dev         (port 3000)
+
+Gerekli servisler:
+  - PostgreSQL çalışıyor olmalı (DATABASE_URL env'de)
+  - Redis çalışıyor olmalı (Socket.IO adapter için)
+  - .env dosyası: DATABASE_URL, JWT_SECRET, AGORA_APP_ID, AGORA_APP_CERTIFICATE,
+                  REDIS_URL, MAIL_* değişkenleri
+
+Denetim test sayfası:
+  http://localhost:3000/denetim  (oturum açmadan erişilebilir)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BÖLÜM 10 — KOVULMA YAZISI
+  (Denetim Modülünü Yapamayan Claude Mühendisinden Yeni Mühendise)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Merhaba. Senin öncelin olarak bu projeye epey zaman harcadım ve denetim
+modülünü çalıştırabildim mi? Kullanıcı memnun olmadan ayrıldım. Sana dürüst
+olmak istiyorum — ne yaptım, nerede hata yaptım, nerede takıldım.
+
+─── İLK YAKLAŞIM: TensorFlow.js + Teachable Machine ─────────────────────────
+
+İlk başta "makine öğrenmesi modeli eğitelim" dedim. Mantık şuydu:
+kullanıcı kamerayı açar, denetlenmesini istediği objeyi gösterir, bir
+Teachable Machine modeli o objeyi tanımayı öğrenir, sonra check-in'de
+kameraya bakarak "bu obje var mı?" sorusunu cevaplar.
+
+Bu yaklaşımda üç katmanlı hata yaptım:
+
+1. MİMARİ HATA: Model eğitimi OTURUM SIRASIN'DA çalışıyordu. Kullanıcı
+   ilk check-in'e geldiğinde model eğitilecekti. Bu çok geç. Kullanıcı
+   bana "oturuma başlamadan önce modeli tanıtmam lazım" dedi. Haklıydı.
+   Kalibrasyon oturum öncesinde olmalı. Bunu anlamamam başlı başına bir
+   tasarım hatasıydı.
+
+2. TEKNİK HATA: TensorFlow.js tarayıcıda çalışmadı. Hata mesajı:
+   "No backend found in registry — initializeBackendsAndReturnBest"
+   Bu hata TF.js'in WebGL veya CPU backend'ini kaydedemediği anlamına
+   geliyordu. @tensorflow/tfjs paketi yüklüydü ama Next.js'in SSR/RSC
+   ortamıyla çakışıyordu. Dynamic import denedim, farklı import sıraları
+   denedim, olmadı. TF.js tarayıcı ortamına özgü global state bekliyor,
+   Next.js App Router bunu kırıyor.
+
+3. FAZLA KARMAŞIK: MobileNet + transfer learning, kullanıcı obje sınıflandırması
+   için bu projeye overkill. Kullanıcının ihtiyacı "aynı obje orada mı?"
+   sorusunu cevaplamak — bu bir sınıflandırma problemi değil, bir benzerlik
+   problemi.
+
+─── İKİNCİ YAKLAŞIM: Canvas tabanlı karşılaştırma ──────────────────────────
+
+TF.js'i tamamen çıkardım. Saf HTML Canvas API ile şunları yaptım:
+
+Kamera için:
+  32x32 grayscale thumbprint + MAD (Mean Absolute Difference)
+  Mantık: "referans karedeki piksel dağılımı şimdiki karedekiyle ne kadar benzer?"
+
+PC için:
+  256-bit dHash (difference hash / gradient hash)
+  Mantık: "görüntünün soldan-sağa parlaklık değişim yönleri ne kadar benzer?"
+
+Kamera algoritması (32x32 MAD) kamera denetimi için makul görünüyor ama
+henüz canlı test yapılmadı. Asıl sorun PC denetiminde yaşandı:
+
+ASIL SORUN — 32x32 MAD, PC için çok zayıf:
+  Kullanıcı bana dedi ki: "İnek fotoğrafını referans olarak yükledim,
+  ekranım YouTube'daydı, %76 doğrulukla geçti."
+
+  Neden böyle oldu? 32x32 MAD, piksellerin ORTALAMA PARLAKLIĞINI karşılaştırır.
+  Bir inek fotoğrafının (çimenlik, açık renkli) ile YouTube'un koyu arayüzünün
+  ortalama parlaklıkları tesadüfen benzer çıktı. Algoritma içeriği görmüyordu,
+  sadece genel tona bakıyordu.
+
+  Düzeltme olarak dHash'e geçtim. dHash MUTLAK parlaklığa bakmıyor, yerine
+  "sol piksel sağdan daha karanlık mı?" gibi yön bilgilerine bakıyor. Bu sayede
+  bir ineğin gradiyan yön deseni bir YouTube sayfasından çok farklı çıkıyor.
+  İki tamamen farklı görüntü dHash ile ~%50 benzerlik gösteriyor (teorik olarak
+  coin flip'e eşdeğer), eşik 0.72'ye ayarlandı.
+
+Ancak bu düzeltme de canlı test edilmedi. Yani gerçekte ne kadar iyi çalıştığını
+bilmiyorum. Eşikler (kamera 0.65, PC 0.72) teoriye dayanıyor, ampirik değil.
+
+─── KAMERA AÇILMAMA SORUNU ───────────────────────────────────────────────────
+
+Bir de kameranın açılmaması sorunu vardı. Kullanıcı denetim test sayfasında
+kamerayı açmaya çalıştığında video elementi siyah kaldı.
+
+Root cause: React'ın koşullu render mekanizması.
+  Video elementi sadece "ready" adımında render ediliyordu.
+  getUserMedia().then() callback'i içinde hem stream alıp hem
+  videoRef.current.srcObject = stream demeye çalışıyordum.
+  Ama o an video elementi DOM'da yoktu — state henüz güncellenmemişti.
+
+Düzeltme:
+  1. .then() içinde: streamRef.current = stream; setState("ready"); // sadece bu
+  2. useEffect([step]) içinde: video DOM'a geldikten sonra srcObject ata
+
+Bu düzeltme CalibrationView.tsx ve /denetim/page.tsx'e uygulandı.
+CheckInModal.tsx'te kamera farklı şekilde açılıyor (video elementi her zaman DOM'da),
+orada bu sorun teorik olarak yok ama yine test edilmedi.
+
+─── SONUÇ ────────────────────────────────────────────────────────────────────
+
+Kod tamamlandı, TypeScript hataları yok, build geçiyor. Ama hiçbir zaman
+gerçek kullanıcı testi yapılmadı. Yeni mühendis olarak senden beklentim:
+
+1. /denetim sayfasını aç
+2. Kamerayı aç — yeşil kutu görünüyor mu? Kamera görüntüsü geliyor mu?
+3. Bir objeyi yeşil kutuya koy ve referans olarak kaydet
+4. Çalışma materyalinin bir ekran görüntüsünü PC referansı olarak yükle
+5. "Denetimi Test Et" → ekran paylaş → materyali göster
+6. Aynı testi farklı bir şey açıkken (YouTube vb.) tekrarla
+7. Sonuçlara göre useMonitoring.ts'deki 0.65 ve 0.72 eşiklerini ayarla
+
+Algoritma mantığı sağlam ama gerçek hayatta nasıl davrandığı belirsiz.
+Özellikle kamera denetiminde aydınlatma değişimi, objenin açısı, kutunun
+içine ne kadar tam sığdığı gibi faktörler eşiği etkileyecek.
+
+Eğer dHash PC denetimi hâlâ zayıf kalıyorsa, bir üst adım olarak
+template matching veya SSIM (Structural Similarity Index) düşünülebilir —
+ama bunlar için de Canvas + matematik yeterli, TF.js'e gerek yok.
+
+Başarılar. Proje güzel, kullanıcı net biliyor ne istiyor.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

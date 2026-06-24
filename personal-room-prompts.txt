@@ -1,0 +1,277 @@
+================================================================================
+KİŞİSEL ODA — UYGULAMA PROMPTLARI
+================================================================================
+Her prompt ayrı bir Claude oturumunda çalıştırılır.
+Bir prompt bitmeden diğerine geçme.
+Tamamlanan her prompttan sonra uygulamayı çalıştırıp test et.
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+PROMPT 1 — VERİTABANI + BACKEND API
+Hedef: Study session verilerini tutacak Prisma modelleri ve NestJS modülü
+────────────────────────────────────────────────────────────────────────────────
+
+backend/prisma/schema.prisma dosyasına aşağıdaki değişiklikleri yap:
+
+1. User modeline şu relation'ı ekle:
+   studySessions StudySession[]
+
+2. Şu iki enum'u ekle:
+   enum StudyMethod {
+     POMODORO
+     BASLAYAMIYORUM
+     KLASIK
+     RASTGELE
+     OZEL
+   }
+
+   enum MonitoringType {
+     NONE
+     PC
+     NOTEBOOK
+     BOTH
+   }
+
+3. Şu iki modeli ekle:
+   model StudySession {
+     id              String           @id @default(uuid())
+     userId          String
+     user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+     topic           String
+     method          StudyMethod
+     workMinutes     Int
+     breakMinutes    Int
+     totalRounds     Int
+     completedRounds Int              @default(0)
+     monitoringType  MonitoringType   @default(NONE)
+     startedAt       DateTime         @default(now())
+     endedAt         DateTime?
+     xpAwarded       Int              @default(0)
+     checkIns        SessionCheckIn[]
+     @@index([userId])
+   }
+
+   model SessionCheckIn {
+     id             String         @id @default(uuid())
+     sessionId      String
+     session        StudySession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+     round          Int
+     passed         Boolean
+     monitoringType MonitoringType
+     checkedAt      DateTime       @default(now())
+     @@index([sessionId])
+   }
+
+Ardından backend/src/ altında study-sessions modülü oluştur:
+  - study-sessions.module.ts
+  - study-sessions.controller.ts
+  - study-sessions.service.ts
+  - dto/create-session.dto.ts
+  - dto/checkin.dto.ts
+
+Endpointler:
+  POST   /study-sessions              → oturum başlat
+  PATCH  /study-sessions/:id/round    → tekrar tamamlandı (completedRounds++)
+  POST   /study-sessions/:id/checkin  → denetim sonucu kaydet (body: { round, passed, monitoringType })
+  PATCH  /study-sessions/:id/end      → oturumu bitir, XP hesapla ve ekle
+  GET    /study-sessions/me           → kullanıcının oturum geçmişi (son 20)
+
+XP hesaplama (/end içinde):
+  baseXp = completedRounds * 10
+  checkIns = o oturuma ait tüm checkIn kayıtları
+  passedCount = passed === true olanların sayısı
+  monitoringBonus = checkIns.length > 0 ? Math.round((passedCount / checkIns.length) * completedRounds * 5) : 0
+  totalXp = baseXp + monitoringBonus
+  xpService.award(userId, totalXp) kullan, mevcut XpService ile entegre et.
+
+Tüm endpointler JwtAuthGuard ile korunacak, @CurrentUser() decorator ile userId alınacak.
+StudySessionsModule'u app.module.ts'e ekle.
+Migration çalıştır: npx prisma migrate dev --name add-study-sessions
+
+Bittikten sonra: GET /study-sessions/me endpoint'ini Postman veya curl ile test et.
+
+
+────────────────────────────────────────────────────────────────────────────────
+PROMPT 2 — KURULUM SİHİRBAZI (SetupWizard)
+Hedef: Oturum başlamadan önce kullanıcıdan bilgi toplayan 3 adımlı wizard
+────────────────────────────────────────────────────────────────────────────────
+
+frontend/src/components/personal-room/ klasörü oluştur.
+İçine SetupWizard.tsx yaz.
+
+Wizard 3 adımdan oluşur, adımlar arasında ileri/geri butonları var:
+
+ADIM 1 — Konu
+  - Serbest metin input: "Bugün neye çalışacaksın?"
+  - Zorunlu alan, boş geçilemiyor
+
+ADIM 2 — Yöntem
+  - 5 seçenek kart olarak gösterilir:
+    a) Pomodoro        → workMinutes: 25, breakMinutes: 5,  totalRounds: 5
+    b) Başlayamıyorum  → workMinutes: 10, breakMinutes: 5,  totalRounds: 5
+    c) Klasik          → workMinutes: 45, breakMinutes: 15, totalRounds: 5
+    d) Rastgele        → workMinutes ve breakMinutes her round başında random atanır
+                         (work: 10-45 arası, break: 5-15 arası), totalRounds: 5
+    e) Özel            → 3 input açılır: oturum süresi (dk), mola süresi (dk), tekrar sayısı
+
+ADIM 3 — Denetim
+  - "Denetim ister misin?" → Evet / Hayır
+  - Hayır seçilirse monitoringType: NONE, wizard tamamlanır
+  - Evet seçilirse denetim türü sorulur:
+      "PC ile mi çalışıyorsun, defter/kitapla mı, ikisi birden mi?"
+      - PC seçeneği: window.navigator.mediaDevices.getDisplayMedia var mı kontrol et,
+        yoksa (mobil) bu seçeneği gösterme
+      - Seçim yapılınca "Devam Et" butonu aktif olur, wizard tamamlanır
+      - NOT: Teachable Machine model eğitimi wizard'da değil, oturum ekranında ilk
+        check-in anında yapılır (bkz. Prompt 3)
+
+Wizard tamamlandığında onComplete(config) callback'i çağrılır:
+  config = {
+    topic: string,
+    method: StudyMethod,
+    workMinutes: number,
+    breakMinutes: number,
+    totalRounds: number,
+    monitoringType: MonitoringType,
+  }
+
+Stil: Mevcut projenin amber/yellow renk temasını takip et, hex tasarım dilini koru.
+      Wizard adımlarını üstte küçük nokta/bar ilerleme göstergesi ile göster.
+
+frontend/src/app/personal-room/page.tsx dosyasını güncelle:
+  - Sayfa yüklenince SetupWizard'ı göster
+  - onComplete tetiklenince "Oturum başlatılıyor..." placeholder göster (Prompt 4'te doldurulacak)
+  - Ayrıca POST /study-sessions API çağrısını burada yap, dönen session id'yi state'e kaydet
+
+
+────────────────────────────────────────────────────────────────────────────────
+PROMPT 3 — TEACHABLE MACHINE HOOK + CHECK-IN MODAL
+Hedef: TF.js model eğitimi, IndexedDB kayıt/yükleme, inference ve check-in popup
+────────────────────────────────────────────────────────────────────────────────
+
+Paketleri yükle:
+  npm install @tensorflow/tfjs @tensorflow-models/mobilenet
+
+frontend/src/components/personal-room/useTeachableMachine.ts hook'u yaz:
+
+Hook'un sunacağı fonksiyonlar ve state:
+  - status: 'idle' | 'training' | 'ready' | 'inferring'
+  - train(videoRef): kullanıcı kamerasından 30 frame yakalar, MobileNet feature extraction
+    üzerine basit bir classifier eğitir. Eğitim tamamlanınca modeli IndexedDB'ye kaydet
+    (key: 'tm-model-{userId}')
+  - loadSavedModel(userId): IndexedDB'den kayıtlı modeli yükle, yoksa null döndür
+  - predict(videoRef): tek frame yakalar, inference çalıştırır, { passed: boolean, confidence: number } döner
+    (passed = en yüksek olasılıklı sınıf 'object' ise ve confidence > 0.7 ise true)
+
+Eğitim sırasında 2 sınıf kullanılır:
+  - 'object': kullanıcı kameraya objesini tutarken çekilen 30 frame
+  - 'background': obje olmadan çekilen 10 frame (otomatik, kullanıcı "hazırım" demeden önce)
+
+frontend/src/components/personal-room/CheckInModal.tsx yaz:
+
+Modal 3 durumda açılır (monitoringType'a göre):
+
+PC durumu:
+  1. "Ekranını paylaş" butonu — getDisplayMedia() çağrılır
+  2. Paylaşım başladıktan sonra ekrandan bir frame yakalanır
+  3. useTeachableMachine.predict() ile kontrol edilir
+  4. Sonuç: geçti / kaldı animasyonu gösterilir
+
+NOTEBOOK durumu:
+  1. Eğer model daha önce eğitilmemişse (IndexedDB'de yoksa):
+     "Objenin fotoğrafını çekelim" akışı açılır:
+       - "Objeyi kameraya tut" → 30 frame çekilir (progress bar ile)
+       - "Şimdi objeyi çek" → model eğitilir
+       - "Kaydedildi" mesajı
+  2. Model varsa direkt: "Objeyi kameraya tut, 3 saniye"
+     → predict() çalışır → sonuç gösterilir
+
+BOTH durumu:
+  - Önce NOTEBOOK akışı, sonra PC akışı (veya tersi, kullanıcı seçer)
+
+Modal kapanmadan önce sonucu parent'a callback ile iletir:
+  onCheckInComplete({ passed: boolean })
+
+Parent bu callback'te POST /study-sessions/:id/checkin çağrısı yapar.
+
+Stil: Mevcut amber/hex teması, modal overlay koyu arka plan.
+
+
+────────────────────────────────────────────────────────────────────────────────
+PROMPT 4 — OTURUM EKRANI + TIMER
+Hedef: Kamera, geri sayım timer'ı, konu etiketi ve tam oturum akışı
+────────────────────────────────────────────────────────────────────────────────
+
+frontend/src/components/personal-room/useStudyTimer.ts hook'u yaz:
+
+  Config alır: { workMinutes, breakMinutes, totalRounds, method }
+  State: { phase: 'work'|'break'|'done', remaining: number (saniye), currentRound: number }
+  Rastgele modda her round başında workMinutes ve breakMinutes yeniden hesaplanır.
+  phase 'work' → 'break' → 'work' döngüsü, totalRounds tamamlanınca 'done'.
+  onRoundComplete callback'i her çalışma fazı bitince tetiklenir.
+  onSessionDone callback'i tüm round'lar bitince tetiklenir.
+
+frontend/src/components/personal-room/StudySessionView.tsx yaz:
+
+Layout:
+  - Üst: konu etiketi (wizard adım 1 cevabı), büyük ve belirgin
+  - Orta: kamera görüntüsü (tek tile, topluluk odası RoomView'dan farklı, daha büyük)
+  - Sağ veya alt panel: timer (büyük rakamlar), faz (ÇALIŞMA / MOLA), round göstergesi
+  - Alt: "Oturumu Bitir" butonu
+
+Davranış:
+  - Bileşen mount olunca Agora'ya gerek yok, sadece getUserMedia ile kamera aç
+  - useStudyTimer başlatılır
+  - onRoundComplete tetiklenince CheckInModal aç (monitoringType NONE değilse)
+  - CheckInModal kapanınca POST /checkin çağrısı yap
+  - onSessionDone tetiklenince PATCH /study-sessions/:id/end çağrısı yap, sonra 'summary' ekranına geç
+
+frontend/src/app/personal-room/page.tsx güncelle:
+  - State: 'setup' | 'session' | 'summary'
+  - 'setup': SetupWizard göster
+  - 'session': StudySessionView göster, sessionId ve config'i prop olarak geçir
+  - 'summary': Prompt 5'te doldurulacak placeholder şimdilik
+
+
+────────────────────────────────────────────────────────────────────────────────
+PROMPT 5 — ÖZET EKRANI + TAM ENTEGRASYON
+Hedef: Oturum sonu özeti, XP animasyonu ve sayfa akışının tamamlanması
+────────────────────────────────────────────────────────────────────────────────
+
+frontend/src/components/personal-room/SessionSummary.tsx yaz:
+
+Props:
+  - topic: string
+  - completedRounds: number
+  - totalRounds: number
+  - totalMinutes: number  (tamamlanan round * workMinutes)
+  - checkInsPassed: number
+  - checkInsTotal: number
+  - xpAwarded: number
+  - onNewSession: () => void
+  - onGoHome: () => void
+
+Gösterilecekler:
+  - Büyük başlık: "Oturum Tamamlandı" veya tüm round'lar bitmeden bittiyse "Erken Bitirilen Oturum"
+  - Konu etiketi
+  - İstatistik kartları: tamamlanan tekrar, toplam süre, denetim skoru (passed/total)
+  - XP kazanıldı (sayı animasyonla sıfırdan hedefe çıkar, 1.5 saniye)
+  - "Yeni Oturum Başlat" ve "Ana Sayfaya Dön" butonları
+
+frontend/src/app/personal-room/page.tsx son güncelleme:
+  - 'summary' ekranında SessionSummary'yi göster
+  - PATCH /end response'undan gelen xpAwarded, completedRounds değerlerini state'e aktar
+  - "Yeni Oturum Başlat" → state 'setup'a döner, sessionId temizlenir
+  - "Ana Sayfaya Dön" → router.push('/')
+
+Son kontrol listesi:
+  [ ] Wizard → oturum başlatma → timer çalışıyor
+  [ ] Round bitince check-in modal açılıyor
+  [ ] Denetim sonucu backend'e gidiyor
+  [ ] Oturum bitince summary ekranı açılıyor
+  [ ] XP backend'de artıyor
+  [ ] Mobilde PC denetimi seçeneği görünmüyor
+  [ ] Sayfa yenilendiğinde aktif oturum kaybolmuyor (sessionId localStorage'da tutulabilir)
+
+================================================================================

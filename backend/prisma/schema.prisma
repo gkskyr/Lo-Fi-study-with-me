@@ -7,21 +7,218 @@ datasource db {
 }
 
 model User {
-  id                      String    @id @default(uuid())
-  email                   String    @unique
+  id                      String         @id @default(uuid())
+  email                   String         @unique
+  username                String         @unique
   password                String
   name                    String
-  role                    Role      @default(BEGINNER)
-  isEmailVerified         Boolean   @default(false)
+  role                    Role           @default(BEGINNER)
+  xp                      Int            @default(0)
+  isEmailVerified         Boolean        @default(false)
   emailVerificationCode   String?
   emailVerificationExpiry DateTime?
-  createdAt               DateTime  @default(now())
+  createdAt               DateTime       @default(now())
+  rooms                   Room[]
+  questions               Question[]
+  questionVotes           QuestionVote[]
+  answers                 Answer[]
+  noteUnits               NoteUnit[]
+  refreshTokens           RefreshToken[]
+  studySessions           StudySession[]
+  monitoringRef           MonitoringRef?
 
   @@index([email])
+  @@index([username])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 enum Role {
   BEGINNER
   EXPERIENCED
   INSTRUCTOR
+}
+
+model Room {
+  id        String     @id @default(uuid())
+  title     String
+  slug      String?    @unique
+  type      RoomType
+  ownerId   String?
+  owner     User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+  questions Question[]
+
+  @@index([ownerId])
+  @@index([type])
+}
+
+model Question {
+  id        String          @id @default(uuid())
+  content   String?
+  upvotes   Int             @default(0)
+  authorId  String
+  author    User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  roomId    String
+  room      Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+  votes     QuestionVote[]
+  answers   Answer[]
+  media     QuestionMedia[]
+
+  @@index([roomId])
+  @@index([authorId])
+}
+
+model QuestionMedia {
+  id         String   @id @default(uuid())
+  url        String
+  mimeType   String
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model QuestionVote {
+  id         String   @id @default(uuid())
+  userId     String
+  questionId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, questionId])
+  @@index([questionId])
+}
+
+model Answer {
+  id         String        @id @default(uuid())
+  content    String?
+  questionId String
+  question   Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  media      AnswerMedia[]
+  createdAt  DateTime      @default(now())
+
+  @@index([questionId])
+  @@index([authorId])
+}
+
+model AnswerMedia {
+  id       String @id @default(uuid())
+  url      String
+  mimeType String
+  answerId String
+  answer   Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+}
+
+enum RoomType {
+  PERSONAL
+  COMMUNITY
+}
+
+enum StudyMethod {
+  POMODORO
+  BASLAYAMIYORUM
+  KLASIK
+  RASTGELE
+  OZEL
+}
+
+enum MonitoringType {
+  NONE
+  PC
+  NOTEBOOK
+  BOTH
+}
+
+model StudySession {
+  id              String           @id @default(uuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic           String
+  method          StudyMethod
+  workMinutes     Int
+  breakMinutes    Int
+  totalRounds     Int
+  completedRounds Int              @default(0)
+  monitoringType  MonitoringType   @default(NONE)
+  startedAt       DateTime         @default(now())
+  endedAt         DateTime?
+  xpAwarded       Int              @default(0)
+  checkIns        SessionCheckIn[]
+
+  @@index([userId])
+}
+
+model SessionCheckIn {
+  id             String         @id @default(uuid())
+  sessionId      String
+  session        StudySession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  round          Int
+  passed         Boolean
+  monitoringType MonitoringType
+  checkedAt      DateTime       @default(now())
+
+  @@index([sessionId])
+}
+
+model MonitoringRef {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refImage  Bytes
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ── Not Defteri Hiyerarşisi: NoteUnit > NoteTopic > Note ────────────────────
+
+model NoteUnit {
+  id        String       @id @default(uuid())
+  title     String
+  order     Int          @default(0)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topics    NoteTopic[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([userId])
+}
+
+model NoteTopic {
+  id        String    @id @default(uuid())
+  title     String
+  order     Int       @default(0)
+  unitId    String
+  unit      NoteUnit  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  notes     Note[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([unitId])
+}
+
+model Note {
+  id        String    @id @default(uuid())
+  title     String
+  content   Json      @default("{}")
+  order     Int       @default(0)
+  topicId   String
+  topic     NoteTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([topicId])
 }

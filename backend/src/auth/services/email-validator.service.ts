@@ -4,12 +4,21 @@ import * as dns from 'dns/promises';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const disposableDomains: string[] = require('disposable-email-domains');
 
-interface AbstractApiResponse {
-  deliverability: 'DELIVERABLE' | 'UNDELIVERABLE' | 'RISKY' | 'UNKNOWN';
-  is_valid_format: { value: boolean };
-  is_disposable_email: { value: boolean };
-  is_mx_found: { value: boolean };
-  is_smtp_valid: { value: boolean };
+interface EmailReputationResponse {
+  email_deliverability: {
+    status: string;
+    is_format_valid: boolean;
+    is_smtp_valid: boolean;
+    is_mx_valid: boolean;
+  };
+  email_quality: {
+    is_disposable: boolean;
+    score: number;
+  };
+  email_risk: {
+    address_risk_status: 'low' | 'medium' | 'high';
+  };
+  error?: { code: string; message: string };
 }
 
 @Injectable()
@@ -22,37 +31,45 @@ export class EmailValidatorService {
     const apiKey = this.config.get<string>('ABSTRACT_API_KEY');
 
     if (apiKey) {
-      await this.validateWithAbstractApi(email, apiKey);
+      await this.validateWithReputationApi(email, apiKey);
     } else {
       await this.validateWithFallback(email);
     }
   }
 
-  private async validateWithAbstractApi(email: string, apiKey: string): Promise<void> {
-    const url = `https://emailvalidation.abstractapi.com/v1/?api_key=${apiKey}&email=${encodeURIComponent(email)}`;
+  private async validateWithReputationApi(email: string, apiKey: string): Promise<void> {
+    const url = `https://emailreputation.abstractapi.com/v1/?api_key=${apiKey}&email=${encodeURIComponent(email)}`;
 
-    let data: AbstractApiResponse;
+    let data: EmailReputationResponse;
     try {
       const res = await fetch(url);
-      data = (await res.json()) as AbstractApiResponse;
+      data = await res.json();
     } catch {
-      // Abstract API erişilemiyorsa fallback'e geç
-      this.logger.warn('Abstract API erişilemedi, fallback doğrulamaya geçiliyor.');
+      this.logger.warn('Email Reputation API erişilemedi, fallback doğrulamaya geçiliyor.');
       await this.validateWithFallback(email);
       return;
     }
 
-    if (!data.is_valid_format?.value) {
+    if (data.error) {
+      this.logger.warn(`Email Reputation API hatası (${data.error.code}): ${data.error.message} — fallback'e geçiliyor.`);
+      await this.validateWithFallback(email);
+      return;
+    }
+
+    if (!data.email_deliverability.is_format_valid) {
       throw new BadRequestException('Geçersiz e-posta formatı.');
     }
-    if (data.is_disposable_email?.value) {
+    if (data.email_quality.is_disposable) {
       throw new BadRequestException('Geçici (tek kullanımlık) e-posta adresleri kabul edilmez.');
     }
-    if (!data.is_mx_found?.value) {
+    if (!data.email_deliverability.is_mx_valid) {
       throw new BadRequestException('Bu e-posta adresi için geçerli bir mail sunucusu bulunamadı.');
     }
-    if (data.deliverability === 'UNDELIVERABLE') {
+    if (data.email_deliverability.status === 'undeliverable') {
       throw new BadRequestException('Bu e-posta adresine ulaşılamıyor. Lütfen geçerli bir adres girin.');
+    }
+    if (data.email_risk.address_risk_status === 'high') {
+      throw new BadRequestException('Bu e-posta adresi yüksek riskli olarak işaretlenmiş.');
     }
   }
 
@@ -62,12 +79,10 @@ export class EmailValidatorService {
       throw new BadRequestException('Geçersiz e-posta formatı.');
     }
 
-    // Disposable e-posta kontrolü
     if (disposableDomains.includes(domain)) {
       throw new BadRequestException('Geçici (tek kullanımlık) e-posta adresleri kabul edilmez.');
     }
 
-    // MX kaydı kontrolü
     try {
       const records = await dns.resolveMx(domain);
       if (!records || records.length === 0) {

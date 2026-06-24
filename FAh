@@ -151,3 +151,67 @@ constructor(usersService: UsersService, config: ConfigService) {
 `npm run build` → 0 hata. ✅
 
 ---
+
+## [FAh-004] `POST /auth/verify-email` → 400 — `@IsEmail()` geçerli emaili reddetti
+
+**Tarih:** 2026-05-05
+
+**Hata Tanımı:**
+```json
+{ "status": 400, "message": ["Geçerli bir e-posta adresi giriniz."] }
+```
+
+**Etki Alanı (Impact):**
+Email doğrulama tamamlanamıyor — hesap kullanılamaz durumda kalıyor.
+
+**Root Cause — 2 ayrı sorun:**
+
+**1) Test client whitespace / default değer**
+`ver-email` inputu `"test@kozan.com"` default değeriyle geliyordu. DTO'da trim yapılmıyordu.
+
+**2) Abstract API key yanlış servise aitti**
+Key, **Email Reputation** servisine aitti; biz **Email Validation** endpoint'ini çağırıyorduk. API `{"error":{"code":"unauthorized"}}` döndürdü. Servis hata response'unu parse edemeyip `is_valid_format` undefined gelince `!undefined = true` → yanlışlıkla "Geçersiz e-posta formatı" fırlattı.
+
+**Sorunlu Kod:**
+```typescript
+if (!data.is_valid_format?.value) { // data.error varken undefined → true → hata
+  throw new BadRequestException('Geçersiz e-posta formatı.');
+}
+```
+
+**Çözüm:**
+- `data.error` kontrolü eklendi — API hatasında fallback'e geçiyor
+- Doğru endpoint `emailreputation.abstractapi.com` olarak güncellendi
+- `VerifyEmailDto`'ya `@Transform` ile trim + lowercase eklendi
+- Test client'ta kayıt sonrası email otomatik doğrulama formuna taşınıyor
+
+`npm run build` → 0 hata. ✅
+
+---
+
+## [FAh-005] Abstract API token israfı — DB kontrolünden önce API çağrısı
+
+**Tarih:** 2026-05-05
+
+**Hata Tanımı:**
+DB'de kayıtlı email için bile Abstract API'ye istek gidiyordu. 100 req/ay limit gereksiz harcanıyordu.
+
+**Root Cause:**
+```typescript
+// ❌ Önce API token harca, sonra DB'ye bak
+await this.emailValidator.validate(dto.email);
+const existing = await this.usersService.findByEmail(dto.email);
+if (existing) throw new ConflictException(...);
+```
+
+**Çözüm:**
+```typescript
+// ✅ Önce DB — varsa anında dön, API'ye gitme
+const existing = await this.usersService.findByEmail(dto.email);
+if (existing) throw new ConflictException('Bu e-posta zaten kayıtlı.');
+await this.emailValidator.validate(dto.email);
+```
+
+`npm run build` → 0 hata. ✅
+
+---
